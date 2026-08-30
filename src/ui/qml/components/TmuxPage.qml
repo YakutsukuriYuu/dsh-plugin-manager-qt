@@ -123,42 +123,43 @@ Rectangle {
                 spacing: 4
 
                 GhostButton {
-                    symbol: "📄"
+                    icon: "doc"
                     tip: "查看输出"
                     onClicked: card.viewOutput()
                 }
 
                 GhostButton {
-                    symbol: "🔗"
+                    icon: "terminal"
                     tip: "附加到终端"
                     onClicked: card.attach()
                 }
 
                 GhostButton {
                     visible: card.session && card.session.isDsh
-                    symbol: "🔄"
+                    icon: "restart"
                     tip: "重启 DSH"
                     onClicked: card.restart()
                 }
 
                 GhostButton {
-                    symbol: "✕"
+                    icon: "close"
                     tip: "关闭会话"
                     hoverColor: Qt.rgba(244/255, 67/255, 54/255, 0.15)
-                    hoverSymbolColor: Theme.danger
+                    hoverIconColor: Theme.danger
                     onClicked: card.kill()
                 }
             }
         }
     }
 
-    // ===== 幽灵图标按钮（与 PluginCard 风格一致）=====
+    // ===== 幽灵图标按钮（矢量线条图标，悬停显现背景）=====
     component GhostButton: Item {
         id: btn
-        property string symbol: ""
+        property string icon: ""
         property string tip: ""
+        property color iconColor: Theme.textSecondary
         property color hoverColor: Theme.surfaceHover
-        property color hoverSymbolColor: Theme.text
+        property color hoverIconColor: Theme.text
         signal clicked()
 
         implicitWidth: 32
@@ -171,12 +172,11 @@ Rectangle {
             Behavior on color { ColorAnimation { duration: 120 } }
         }
 
-        Text {
+        AppIcon {
             anchors.centerIn: parent
-            text: btn.symbol
-            font.pixelSize: 14
-            color: btnMa.containsMouse ? btn.hoverSymbolColor : Theme.textSecondary
-            Behavior on color { ColorAnimation { duration: 120 } }
+            name: btn.icon
+            iconColor: btnMa.containsMouse ? btn.hoverIconColor : btn.iconColor
+            Behavior on iconColor { ColorAnimation { duration: 120 } }
         }
 
         MouseArea {

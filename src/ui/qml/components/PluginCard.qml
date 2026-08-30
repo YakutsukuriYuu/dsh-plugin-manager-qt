@@ -61,14 +61,14 @@ Rectangle {
         ToolTip.delay: 600
     }
 
-    // ===== 内联组件：幽灵图标按钮（悬停才显现背景）=====
+    // ===== 内联组件：幽灵图标按钮（矢量线条图标，悬停显现背景）=====
     component IconButton: Item {
         id: iconRoot
-        property string symbol: ""
+        property string icon: ""
         property string tip: ""
-        property color symbolColor: Theme.textSecondary
+        property color iconColor: Theme.textSecondary
         property color hoverColor: Theme.surfaceHover
-        property color hoverSymbolColor: Theme.text
+        property color hoverIconColor: Theme.text
         signal clicked()
 
         implicitWidth: 32
@@ -81,12 +81,11 @@ Rectangle {
             Behavior on color { ColorAnimation { duration: 120 } }
         }
 
-        Text {
+        AppIcon {
             anchors.centerIn: parent
-            text: iconRoot.symbol
-            font.pixelSize: 15
-            color: iconMa.containsMouse ? iconRoot.hoverSymbolColor : iconRoot.symbolColor
-            Behavior on color { ColorAnimation { duration: 120 } }
+            name: iconRoot.icon
+            iconColor: iconMa.containsMouse ? iconRoot.hoverIconColor : iconRoot.iconColor
+            Behavior on iconColor { ColorAnimation { duration: 120 } }
         }
 
         MouseArea {
@@ -228,16 +227,16 @@ Rectangle {
                 spacing: 4
 
                 IconButton {
-                    symbol: "📂"
+                    icon: "folder"
                     tip: "打开插件目录"
                     onClicked: root.openDirectory()
                 }
 
                 IconButton {
-                    symbol: "🗑"
+                    icon: "trash"
                     tip: "卸载插件"
                     hoverColor: Qt.rgba(244/255, 67/255, 54/255, 0.15)
-                    hoverSymbolColor: Theme.danger
+                    hoverIconColor: Theme.danger
                     onClicked: root.uninstallRequested()
                 }
             }

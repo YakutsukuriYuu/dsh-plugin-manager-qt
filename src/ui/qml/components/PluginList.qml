@@ -7,13 +7,12 @@ Rectangle {
     id: root
     color: Theme.background
 
-    property string title: "插件列表"
     property var plugins: []
     property bool loading: false
     // 是否显示子依赖插件（被其他插件的 dependencies 带进来的包）
     property bool showTransitive: false
-    // 是否显示「显示子依赖」开关（已启用页面不需要）
-    property bool showTransitiveToggle: true
+    // 筛选模式: "all" | "enabled"
+    property string filterMode: "all"
 
     signal refresh()
     signal installRequested()
@@ -21,7 +20,7 @@ Rectangle {
     signal toggleRequested(string pluginId, bool enabled)
     signal openDirectory(string pluginId)
 
-    // 子依赖数量
+    // 子依赖数量（基于直接/间接标记，不含筛选模式影响）
     readonly property int transitiveCount: {
         let n = 0
         for (let i = 0; i < plugins.length; ++i)
@@ -29,13 +28,28 @@ Rectangle {
         return n
     }
 
-    // 按「直接安装」过滤后的列表
-    property var visiblePlugins: {
-        if (root.showTransitive) return plugins
-        return plugins.filter(function (p) { return p.direct })
+    // 已启用数量
+    readonly property int enabledCount: {
+        let n = 0
+        for (let i = 0; i < plugins.length; ++i)
+            if (plugins[i].enabled) ++n
+        return n
     }
 
-    // 搜索过滤
+    // 第一层：按筛选模式过滤（全部 / 已启用）
+    property var modeFiltered: {
+        if (root.filterMode === "enabled")
+            return plugins.filter(function (p) { return p.enabled })
+        return plugins
+    }
+
+    // 第二层：按「直接安装/子依赖」过滤
+    property var visiblePlugins: {
+        if (root.showTransitive) return modeFiltered
+        return modeFiltered.filter(function (p) { return p.direct })
+    }
+
+    // 第三层：搜索过滤
     property var filteredPlugins: {
         const kw = searchField.text.trim().toLowerCase()
         if (kw.length === 0) return visiblePlugins
@@ -56,16 +70,10 @@ Rectangle {
             spacing: 12
 
             Text {
-                text: root.title
+                text: "插件管理"
                 font.pixelSize: Theme.fontTitle
                 font.bold: true
                 color: Theme.text
-            }
-
-            Text {
-                text: "(" + root.filteredPlugins.length + ")"
-                font.pixelSize: Theme.fontNormal
-                color: Theme.textSecondary
             }
 
             Item { Layout.fillWidth: true }
@@ -82,6 +90,44 @@ Rectangle {
             }
         }
 
+        // 分段筛选：全部 / 已启用
+        RowLayout {
+            spacing: 0
+
+            Repeater {
+                model: [
+                    { "key": "all", "label": "全部 (" + root.plugins.length + ")" },
+                    { "key": "enabled", "label": "已启用 (" + root.enabledCount + ")" }
+                ]
+
+                delegate: Rectangle {
+                    width: segText.implicitWidth + 28
+                    height: 32
+                    radius: 6
+                    color: root.filterMode === modelData.key ? Theme.primary
+                         : segMa.containsMouse ? Theme.surfaceHover : Theme.surface
+
+                    Text {
+                        id: segText
+                        anchors.centerIn: parent
+                        text: modelData.label
+                        font.pixelSize: Theme.fontSmall
+                        color: root.filterMode === modelData.key ? "white" : Theme.textSecondary
+                    }
+
+                    MouseArea {
+                        id: segMa
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.filterMode = modelData.key
+                    }
+                }
+            }
+
+            Item { Layout.fillWidth: true }
+        }
+
         // 搜索框
         TextField {
             id: searchField
@@ -91,7 +137,7 @@ Rectangle {
 
         // 子依赖开关
         CheckBox {
-            visible: root.showTransitiveToggle && root.transitiveCount > 0
+            visible: root.transitiveCount > 0
             text: "显示子依赖插件 (" + root.transitiveCount + " 个，由其他插件自动安装)"
             checked: root.showTransitive
             onToggled: root.showTransitive = checked
@@ -134,7 +180,10 @@ Rectangle {
             // 空状态提示
             Text {
                 anchors.centerIn: parent
-                text: root.loading ? "" : (root.plugins.length === 0 ? "当前 Profile 暂无插件" : "没有匹配的插件")
+                text: root.loading ? ""
+                    : root.plugins.length === 0 ? "当前 Profile 暂无插件"
+                    : root.filterMode === "enabled" && root.enabledCount === 0 ? "暂无已启用的插件"
+                    : "没有匹配的插件"
                 font.pixelSize: Theme.fontNormal
                 color: Theme.textSecondary
                 visible: root.filteredPlugins.length === 0 && !root.loading

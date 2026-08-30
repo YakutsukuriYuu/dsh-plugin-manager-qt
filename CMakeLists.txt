@@ -30,6 +30,12 @@ set(SOURCES
 
 qt_add_executable(dsh-plugin-manager ${SOURCES})
 
+# macOS 应用图标（打进 .app 包的 Resources 目录）
+set(APP_ICON_MACOS "${CMAKE_CURRENT_SOURCE_DIR}/resources/AppIcon.icns")
+set_source_files_properties(${APP_ICON_MACOS} PROPERTIES
+    MACOSX_PACKAGE_LOCATION "Resources")
+target_sources(dsh-plugin-manager PRIVATE ${APP_ICON_MACOS})
+
 # Theme.qml 是单例
 set_source_files_properties(src/ui/qml/Theme.qml
     PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
@@ -40,6 +46,7 @@ qt_add_qml_module(dsh-plugin-manager
     QML_FILES
         src/ui/qml/Main.qml
         src/ui/qml/Theme.qml
+        src/ui/qml/components/AppIcon.qml
         src/ui/qml/components/PluginList.qml
         src/ui/qml/components/PluginCard.qml
         src/ui/qml/components/TmuxPage.qml
@@ -56,6 +63,7 @@ set_target_properties(dsh-plugin-manager PROPERTIES
     MACOSX_BUNDLE TRUE
     MACOSX_BUNDLE_GUI_IDENTIFIER "com.dsh.plugin-manager"
     MACOSX_BUNDLE_BUNDLE_NAME "DSH Plugin Manager"
+    MACOSX_BUNDLE_ICON_FILE "AppIcon.icns"
 )
 
 install(TARGETS dsh-plugin-manager

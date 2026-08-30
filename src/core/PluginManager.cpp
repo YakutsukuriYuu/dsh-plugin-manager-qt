@@ -11,13 +11,20 @@
 #include <QUrl>
 #include <QProcessEnvironment>
 #include <QSet>
+#include <QSettings>
 #include <algorithm>
 
 PluginManager::PluginManager(QObject *parent)
     : QObject(parent)
 {
     m_dshHome = QDir::homePath() + "/.dsh";
-    m_dshExecutable = findDshExecutable();
+
+    // 优先使用用户在设置页保存的路径，否则自动检测
+    QSettings settings("DSH", "dsh-plugin-manager");
+    m_dshExecutable = settings.value("dshExecutable").toString();
+    if (m_dshExecutable.isEmpty())
+        m_dshExecutable = findDshExecutable();
+
     scanProfiles();
     if (!m_profiles.isEmpty()) {
         m_currentProfile = m_profiles.first();
@@ -228,16 +235,14 @@ void PluginManager::scanPlugins()
             found << plugin;
         }
 
-        // 排序：直接安装的在前，已启用的在前，名称升序
+        // 排序：直接安装的在前，名称升序。
+        // 注意：不按启用状态排序，避免切换启用时列表位置跳动。
         std::sort(found.begin(), found.end(), [](const QVariant &a, const QVariant &b) {
             const QVariantMap pa = a.toMap();
             const QVariantMap pb = b.toMap();
             const bool da = pa.value("direct").toBool();
             const bool db = pb.value("direct").toBool();
             if (da != db) return da > db;
-            const bool ea = pa.value("enabled").toBool();
-            const bool eb = pb.value("enabled").toBool();
-            if (ea != eb) return ea > eb;
             return pa.value("name").toString() < pb.value("name").toString();
         });
     }
@@ -307,8 +312,18 @@ void PluginManager::togglePlugin(const QString &pluginId, bool enabled)
     }
 
     if (writeEnabledBundles(bundles)) {
-        emit operationSucceeded(QString("%1 插件: %2").arg(enabled ? "已启用" : "已禁用", pluginId));
-        scanPlugins();
+        // 就地更新该插件的 enabled 字段，不重新扫描：
+        // 1. 保持列表顺序不变（卡片不跳动）
+        // 2. 不弹成功提示（开关本身已是即时反馈）
+        for (int i = 0; i < m_plugins.size(); ++i) {
+            QVariantMap p = m_plugins[i].toMap();
+            if (p.value("id").toString() == pluginId) {
+                p["enabled"] = enabled;
+                m_plugins[i] = p;
+                break;
+            }
+        }
+        emit pluginsChanged();
     }
 }
 
@@ -332,10 +347,22 @@ void PluginManager::openProfileDirectory()
 
 void PluginManager::setDshExecutable(const QString &path)
 {
-    if (m_dshExecutable != path && !path.isEmpty()) {
-        m_dshExecutable = path;
-        emit dshExecutableChanged();
+    const QString trimmed = path.trimmed();
+    if (m_dshExecutable == trimmed)
+        return;
+
+    m_dshExecutable = trimmed;
+
+    // 持久化到 QSettings（空字符串 = 清除自定义，恢复自动检测）
+    QSettings settings("DSH", "dsh-plugin-manager");
+    if (trimmed.isEmpty()) {
+        settings.remove("dshExecutable");
+        m_dshExecutable = findDshExecutable();
+    } else {
+        settings.setValue("dshExecutable", trimmed);
     }
+
+    emit dshExecutableChanged();
 }
 
 QString PluginManager::findDshExecutable() const

@@ -16,11 +16,6 @@ ApplicationWindow {
     Material.theme: Material.Dark
     Material.accent: Material.Purple
 
-    // 按启用状态过滤后的插件列表（QVariantList 在 QML 中是 JS 数组，支持 filter）
-    function enabledPlugins() {
-        return pluginManager.plugins.filter(function (p) { return p.enabled })
-    }
-
     RowLayout {
         anchors.fill: parent
         spacing: 0
@@ -74,8 +69,7 @@ ApplicationWindow {
                     currentIndex: 0
 
                     model: [
-                        { "name": "全部插件", "icon": "☰" },
-                        { "name": "已启用", "icon": "✓" },
+                        { "name": "插件管理", "icon": "☰" },
                         { "name": "终端会话", "icon": ">_" },
                         { "name": "设置", "icon": "⚙" }
                     ]
@@ -116,25 +110,10 @@ ApplicationWindow {
             Layout.fillWidth: true
             Layout.fillHeight: true
 
-            // 全部插件
+            // 插件管理（合并「全部」与「已启用」，页内分段筛选）
             PluginList {
-                title: "全部插件"
                 plugins: pluginManager.plugins
                 loading: pluginManager.loading
-                onRefresh: pluginManager.refresh()
-                onInstallRequested: installDialog.open()
-                onUninstallRequested: function (id) { confirmDialog.askUninstall(id) }
-                onToggleRequested: function (id, enabled) { pluginManager.togglePlugin(id, enabled) }
-                onOpenDirectory: function (id) { pluginManager.openPluginDirectory(id) }
-            }
-
-            // 已启用
-            PluginList {
-                title: "已启用的插件"
-                plugins: enabledPlugins()
-                loading: pluginManager.loading
-                showTransitive: true
-                showTransitiveToggle: false
                 onRefresh: pluginManager.refresh()
                 onInstallRequested: installDialog.open()
                 onUninstallRequested: function (id) { confirmDialog.askUninstall(id) }
@@ -173,15 +152,49 @@ ApplicationWindow {
 
                         Text { text: "当前 Profile:"; color: Theme.textSecondary; font.pixelSize: Theme.fontNormal }
                         Text { text: pluginManager.currentProfile; color: Theme.text; font.pixelSize: Theme.fontNormal }
+                    }
 
-                        Text { text: "dsh 命令:"; color: Theme.textSecondary; font.pixelSize: Theme.fontNormal }
-                        Text {
-                            text: pluginManager.dshExecutable || "未找到"
-                            color: pluginManager.dshExecutable ? Theme.text : Theme.danger
-                            font.pixelSize: Theme.fontNormal
+                    // dsh 可执行文件路径（可自定义，留空保存 = 恢复自动检测）
+                    Text {
+                        text: "dsh 命令路径:"
+                        color: Theme.textSecondary
+                        font.pixelSize: Theme.fontNormal
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        TextField {
+                            id: dshPathField
                             Layout.fillWidth: true
-                            wrapMode: Text.WrapAnywhere
+                            text: pluginManager.dshExecutable
+                            placeholderText: "留空则自动检测（$PATH / homebrew / npx 缓存）"
+                            selectByMouse: true
                         }
+
+                        Button {
+                            text: "保存"
+                            highlighted: true
+                            enabled: dshPathField.text.trim() !== pluginManager.dshExecutable
+                            onClicked: pluginManager.setDshExecutable(dshPathField.text)
+                        }
+
+                        Button {
+                            text: "自动检测"
+                            onClicked: {
+                                dshPathField.text = ""
+                                pluginManager.setDshExecutable("")
+                            }
+                        }
+                    }
+
+                    Text {
+                        text: "当前生效: " + (pluginManager.dshExecutable || "未找到 dsh")
+                        color: pluginManager.dshExecutable ? Theme.textSecondary : Theme.danger
+                        font.pixelSize: Theme.fontSmall
+                        wrapMode: Text.WrapAnywhere
+                        Layout.fillWidth: true
                     }
 
                     Button {
