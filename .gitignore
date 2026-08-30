@@ -1,0 +1,13 @@
+# 构建输出
+build/
+
+# macOS
+.DS_Store
+
+# Qt Creator 用户配置
+CMakeLists.txt.user*
+*.autosave
+
+# IDE
+.idea/
+.vscode/
