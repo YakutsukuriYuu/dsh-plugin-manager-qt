@@ -6,6 +6,7 @@
 #include <QClipboard>
 #include <QGuiApplication>
 #include <QFile>
+#include <QFileInfo>
 #include <QDir>
 #include <QTemporaryDir>
 
@@ -179,6 +180,19 @@ public:
         return false;
     }
 
+    bool uploadDirectory(const QString &localPath, const QString &remotePath,
+                         QString *errorMessage) override
+    {
+        // 网络抖动容忍：失败自动重试 2 次
+        QString lastError;
+        for (int attempt = 0; attempt < 3; ++attempt) {
+            if (uploadOnce(localPath, remotePath, &lastError))
+                return true;
+        }
+        if (errorMessage) *errorMessage = lastError;
+        return false;
+    }
+
     bool runDsh(const QStringList &args, QString *output) override
     {
         if (m_dshPath.isEmpty()) {
@@ -200,6 +214,69 @@ public:
     }
 
 private:
+    // 单次上传实现（uploadDirectory 的重试包装会调用它）
+    bool uploadOnce(const QString &localPath, const QString &remotePath, QString *errorMessage)
+    {
+        // tar 打包本地目录的「内容」（-C localPath .）→ 管道 → ssh 远程解压到目标目录
+        // 注意：打包内容而非目录本身，否则远程会嵌套一层（target/name/name/...）
+        // -h 解引用符号链接（本地 link 开发的插件）
+
+        QProcess tarProc;
+        QProcess sshProc;
+        tarProc.setStandardOutputProcess(&sshProc);
+
+        QStringList sshArgs;
+        if (m_password.isEmpty()) {
+            sshArgs << "-o" << "BatchMode=yes";
+        } else {
+            sshArgs << "-o" << "NumberOfPasswordPrompts=1"
+                    << "-o" << "PreferredAuthentications=password"
+                    << "-o" << "PubkeyAuthentication=no";
+            QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+            env.insert("SSH_ASKPASS", m_askpassPath);
+            env.insert("SSH_ASKPASS_REQUIRE", "force");
+            env.insert("DISPLAY", ":0");
+            sshProc.setProcessEnvironment(env);
+        }
+        sshArgs << "-o" << "ConnectTimeout=8"
+                << "-o" << "StrictHostKeyChecking=accept-new";
+        if (m_port > 0)
+            sshArgs << "-p" << QString::number(m_port);
+        sshArgs << m_target
+                << QStringLiteral("mkdir -p -- '%1' && tar xzf - -C '%1'")
+                       .arg(escape(remotePath));
+
+        // 注意：必须先启动生产者（tar）再启动消费者（ssh），
+        // 否则 setStandardOutputProcess 的管道可能截断（gzip 报 unexpected end of file）
+        tarProc.start("tar", {
+            "-czhf", "-",
+            "--exclude", ".git",
+            "--exclude", ".DS_Store",
+            "--exclude", "node_modules/.cache",
+            "-C", localPath, "."
+        });
+        sshProc.start("ssh", sshArgs);
+
+        tarProc.waitForFinished(300000);
+        sshProc.waitForFinished(300000);
+        if (tarProc.state() != QProcess::NotRunning) {
+            tarProc.kill();
+            tarProc.waitForFinished(2000);
+        }
+        if (sshProc.state() != QProcess::NotRunning) {
+            sshProc.kill();
+            sshProc.waitForFinished(2000);
+        }
+
+        const bool ok = tarProc.exitCode() == 0 && sshProc.exitCode() == 0;
+        if (!ok && errorMessage) {
+            *errorMessage = QString::fromUtf8(sshProc.readAllStandardError()).trimmed();
+            if (errorMessage->isEmpty())
+                *errorMessage = QString::fromUtf8(tarProc.readAllStandardError()).trimmed();
+        }
+        return ok;
+    }
+
     // shell 单引号转义：' → '\''
     static QString escape(const QString &s)
     {
@@ -244,6 +321,7 @@ private:
         }
         if (!process.waitForFinished(timeoutMs)) {
             process.kill();
+            process.waitForFinished(2000);  // 等进程真正退出，避免析构警告
             if (output) *output = "SSH 命令超时";
             return false;
         }

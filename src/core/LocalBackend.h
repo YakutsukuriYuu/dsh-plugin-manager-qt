@@ -3,6 +3,7 @@
 #include "PluginBackend.h"
 
 #include <QDir>
+#include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonDocument>
@@ -113,6 +114,33 @@ public:
             return true;
         if (errorMessage) *errorMessage = "删除目录失败: " + path;
         return false;
+    }
+
+    bool uploadDirectory(const QString &localPath, const QString &remotePath,
+                         QString *errorMessage) override
+    {
+        // 本机后端基本用不到（同步是本地→远程），简单递归复制
+        QDir().mkpath(remotePath);
+        QDirIterator it(localPath, QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot | QDir::Hidden,
+                        QDirIterator::Subdirectories);
+        while (it.hasNext()) {
+            it.next();
+            const QString rel = QDir(localPath).relativeFilePath(it.filePath());
+            if (rel == ".git" || rel.startsWith(".git/") || rel.endsWith(".DS_Store"))
+                continue;
+            const QString dest = remotePath + "/" + rel;
+            if (it.fileInfo().isDir()) {
+                QDir().mkpath(dest);
+            } else {
+                QDir().mkpath(QFileInfo(dest).absolutePath());
+                QFile::remove(dest);
+                if (!QFile::copy(it.filePath(), dest)) {
+                    if (errorMessage) *errorMessage = "复制失败: " + it.filePath();
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
     bool runDsh(const QStringList &args, QString *output) override

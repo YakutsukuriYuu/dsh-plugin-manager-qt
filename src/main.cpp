@@ -8,6 +8,7 @@
 #include "core/TmuxManager.h"
 #include "core/UpdateChecker.h"
 #include "core/RemoteManager.h"
+#include "core/SyncManager.h"
 
 int main(int argc, char *argv[])
 {
@@ -22,12 +23,14 @@ int main(int argc, char *argv[])
     TmuxManager tmuxManager;
     UpdateChecker updateChecker;
     RemoteManager remoteManager(&pluginManager);
+    SyncManager syncManager(&pluginManager);
 
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty("pluginManager", &pluginManager);
     engine.rootContext()->setContextProperty("tmuxManager", &tmuxManager);
     engine.rootContext()->setContextProperty("updateChecker", &updateChecker);
     engine.rootContext()->setContextProperty("remoteManager", &remoteManager);
+    engine.rootContext()->setContextProperty("syncManager", &syncManager);
 
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreated,
                      &app, [](QObject *obj, const QUrl &) {

@@ -44,6 +44,11 @@ public:
     // 删除入口（符号链接或目录）
     virtual bool removeEntry(const QString &path, QString *errorMessage) = 0;
 
+    // 上传本地目录到远程路径（tar 管道/本地复制）。后端自行处理连接参数。
+    // 用于「本地 → 远程」插件同步。
+    virtual bool uploadDirectory(const QString &localPath, const QString &remotePath,
+                                 QString *errorMessage) = 0;
+
     // 执行 dsh 命令（dsh 路径由后端自行解析）
     virtual bool runDsh(const QStringList &args, QString *output) = 0;
 

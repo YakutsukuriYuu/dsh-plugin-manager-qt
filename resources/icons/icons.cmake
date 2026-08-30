@@ -96,4 +96,10 @@ set(ICON_FILES
     resources/icons/trash_white.svg
     resources/icons/trash_danger.svg
     resources/icons/trash_blue.svg
+    resources/icons/upload_secondary.svg
+    resources/icons/upload_primary.svg
+    resources/icons/upload_tertiary.svg
+    resources/icons/upload_white.svg
+    resources/icons/upload_danger.svg
+    resources/icons/upload_blue.svg
 )

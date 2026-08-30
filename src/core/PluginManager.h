@@ -47,6 +47,8 @@ public:
     QString lastOutput() const { return m_lastOutput; }
     bool remoteActive() const;
     QString backendName() const;
+    // 内部使用（SyncManager 等），不暴露给 QML
+    PluginBackend *backend() const { return m_backend.get(); }
 
     void setCurrentProfile(const QString &profile);
 
