@@ -60,9 +60,12 @@ void PluginManager::useLocalBackend()
     refresh();
 }
 
-bool PluginManager::useRemoteBackend(const QString &target, const QString &label, QString *errorMessage)
+bool PluginManager::useRemoteBackend(const QString &target, const QString &label,
+                                     int port, const QString &password, QString *errorMessage)
 {
-    auto remote = std::make_unique<SshBackend>(target, label);
+    auto remote = std::make_unique<SshBackend>(target, label, port);
+    if (!password.isEmpty())
+        remote->setPassword(password);
 
     setLoading(true);
     const bool ok = remote->connectInit(errorMessage);

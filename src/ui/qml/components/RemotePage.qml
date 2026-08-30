@@ -5,12 +5,162 @@ import QtQuick.Effects
 import DshPluginManager
 
 /**
- * 远程服务器管理页：SSH 服务器列表 + 添加/删除/连接。
- * 连接成功后，「插件管理」页自动切换为远程模式。
+ * 远程服务器管理页：SSH 服务器列表 + 添加/编辑/删除/连接。
+ *
+ * 服务器字段：备注名 / SSH 地址 / 端口 / 认证方式（密钥|密码）/ 记住密码
+ * 地址栏支持粘贴完整命令（ssh -p 6005 user@host），自动拆分端口。
  */
 Rectangle {
     id: root
     color: Theme.window
+
+    // ===== 服务器表单（添加/编辑共用）=====
+    component ServerFormDialog: Dialog {
+        id: formDialog
+        modal: true
+        anchors.centerIn: parent
+        width: 460
+        standardButtons: Dialog.Ok | Dialog.Cancel
+
+        property bool isEdit: false
+        property string originalName: ""
+
+        title: isEdit ? "编辑服务器" : "添加服务器"
+
+        function askAdd() {
+            isEdit = false
+            originalName = ""
+            formName.text = ""
+            formTarget.text = ""
+            formPort.text = ""
+            authKey.checked = true
+            formPassword.text = ""
+            rememberPwd.checked = false
+            open()
+        }
+
+        function askEdit(name, target, port, auth, hasSavedPwd) {
+            isEdit = true
+            originalName = name
+            formName.text = name
+            formTarget.text = target
+            formPort.text = port > 0 ? String(port) : ""
+            authKey.checked = auth !== "password"
+            authPwd.checked = auth === "password"
+            formPassword.text = ""
+            rememberPwd.checked = hasSavedPwd
+            open()
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 12
+
+            Text { text: "备注名"; color: Theme.textSecondary; font.pixelSize: Theme.fontSmall }
+            TextField {
+                id: formName
+                Layout.fillWidth: true
+                placeholderText: "例如: 生产服务器"
+            }
+
+            Text { text: "SSH 地址"; color: Theme.textSecondary; font.pixelSize: Theme.fontSmall }
+            TextField {
+                id: formTarget
+                Layout.fillWidth: true
+                placeholderText: "user@192.168.1.100 或别名 home（不要带 ssh 前缀）"
+
+                // 粘贴完整命令时自动拆分端口
+                onTextChanged: {
+                    const parsed = remoteManager.parseTarget(text)
+                    if (parsed.port > 0 && parsed.target !== text) {
+                        formTarget.text = parsed.target
+                        formPort.text = String(parsed.port)
+                    }
+                }
+            }
+
+            Text { text: "端口（留空 = 默认 22）"; color: Theme.textSecondary; font.pixelSize: Theme.fontSmall }
+            TextField {
+                id: formPort
+                Layout.fillWidth: true
+                placeholderText: "22"
+                validator: IntValidator { bottom: 1; top: 65535 }
+                inputMethodHints: Qt.ImhDigitsOnly
+            }
+
+            Text { text: "认证方式"; color: Theme.textSecondary; font.pixelSize: Theme.fontSmall }
+            RowLayout {
+                spacing: 16
+
+                RadioButton {
+                    id: authKey
+                    text: "密钥认证"
+                    checked: true
+                    contentItem: Text {
+                        text: authKey.text
+                        color: Theme.text
+                        font.pixelSize: Theme.fontNormal
+                        leftPadding: authKey.indicator.width + 6
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                }
+
+                RadioButton {
+                    id: authPwd
+                    text: "密码认证"
+                    contentItem: Text {
+                        text: authPwd.text
+                        color: Theme.text
+                        font.pixelSize: Theme.fontNormal
+                        leftPadding: authPwd.indicator.width + 6
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                }
+            }
+
+            // 密码区（仅密码认证时显示）
+            ColumnLayout {
+                visible: authPwd.checked
+                spacing: 8
+                Layout.fillWidth: true
+
+                Text { text: formDialog.isEdit ? "密码（留空 = 不修改已保存的）" : "密码"
+                       color: Theme.textSecondary; font.pixelSize: Theme.fontSmall }
+                TextField {
+                    id: formPassword
+                    Layout.fillWidth: true
+                    echoMode: TextInput.Password
+                    placeholderText: "连接时使用的登录密码"
+                }
+
+                CheckBox {
+                    id: rememberPwd
+                    text: "记住密码（Base64 存储在本机，安全性有限）"
+                    contentItem: Text {
+                        text: rememberPwd.text
+                        color: Theme.textTertiary
+                        font.pixelSize: Theme.fontSmall
+                        leftPadding: rememberPwd.indicator.width + 6
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                }
+            }
+        }
+
+        onOpened: formName.forceActiveFocus()
+
+        onAccepted: {
+            const port = formPort.text.trim().length > 0 ? parseInt(formPort.text.trim()) : 0
+            const auth = authPwd.checked ? "password" : "key"
+            if (formDialog.isEdit) {
+                remoteManager.editServer(formDialog.originalName, formName.text,
+                                         formTarget.text, port, auth,
+                                         formPassword.text, rememberPwd.checked)
+            } else {
+                remoteManager.addServer(formName.text, formTarget.text, port, auth,
+                                        formPassword.text, rememberPwd.checked)
+            }
+        }
+    }
 
     // ===== 服务器卡片 =====
     component ServerCard: Rectangle {
@@ -73,15 +223,38 @@ Rectangle {
                 Layout.alignment: Qt.AlignVCenter
                 spacing: 2
 
-                Text {
-                    text: card.server ? card.server.name : ""
-                    font.pixelSize: Theme.fontHeadline
-                    font.weight: Font.DemiBold
-                    color: Theme.text
+                RowLayout {
+                    spacing: 8
+
+                    Text {
+                        text: card.server ? card.server.name : ""
+                        font.pixelSize: Theme.fontHeadline
+                        font.weight: Font.DemiBold
+                        color: Theme.text
+                    }
+
+                    // 密码认证徽章
+                    Rectangle {
+                        visible: card.server && card.server.authType === "password"
+                        width: authText.implicitWidth + 12
+                        height: 18
+                        radius: 9
+                        color: "#1EFF9F0A"
+
+                        Text {
+                            id: authText
+                            anchors.centerIn: parent
+                            text: "密码"
+                            font.pixelSize: Theme.fontMini
+                            color: Theme.warning
+                        }
+                    }
                 }
 
                 Text {
-                    text: card.server ? card.server.target : ""
+                    text: card.server
+                          ? card.server.target + (card.server.port > 0 ? ":" + card.server.port : "")
+                          : ""
                     font.pixelSize: Theme.fontSmall
                     font.family: "Menlo"
                     color: Theme.textSecondary
@@ -113,73 +286,59 @@ Rectangle {
                     }
                 }
 
-                // 编辑按钮
-                Item {
-                    implicitWidth: 30
-                    implicitHeight: 30
-
-                    Rectangle {
-                        anchors.fill: parent
-                        radius: Theme.radiusSmall
-                        color: editMa.containsMouse ? "#14FFFFFF" : "transparent"
-                        Behavior on color { ColorAnimation { duration: Theme.animFast } }
-                    }
-
-                    AppIcon {
-                        anchors.centerIn: parent
-                        width: 15
-                        height: 15
-                        name: "pencil"
-                        iconColor: editMa.containsMouse ? Theme.text : Theme.textSecondary
-                    }
-
-                    MouseArea {
-                        id: editMa
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: card.editRequested()
-                    }
-
-                    ToolTip.visible: editMa.containsMouse
-                    ToolTip.text: "编辑服务器"
-                    ToolTip.delay: 600
+                IconBtn {
+                    icon: "pencil"
+                    tip: "编辑服务器"
+                    onClicked: card.editRequested()
                 }
 
-                // 删除按钮
-                Item {
-                    implicitWidth: 30
-                    implicitHeight: 30
-
-                    Rectangle {
-                        anchors.fill: parent
-                        radius: Theme.radiusSmall
-                        color: delMa.containsMouse ? "#26FF453A" : "transparent"
-                        Behavior on color { ColorAnimation { duration: Theme.animFast } }
-                    }
-
-                    AppIcon {
-                        anchors.centerIn: parent
-                        width: 15
-                        height: 15
-                        name: "trash"
-                        iconColor: delMa.containsMouse ? Theme.danger : Theme.textSecondary
-                    }
-
-                    MouseArea {
-                        id: delMa
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: card.removeRequested()
-                    }
-
-                    ToolTip.visible: delMa.containsMouse
-                    ToolTip.text: "删除服务器"
-                    ToolTip.delay: 600
+                IconBtn {
+                    icon: "trash"
+                    tip: "删除服务器"
+                    danger: true
+                    onClicked: card.removeRequested()
                 }
             }
         }
+    }
+
+    // ===== 幽灵图标按钮 =====
+    component IconBtn: Item {
+        id: btn
+        property string icon: ""
+        property string tip: ""
+        property bool danger: false
+        signal clicked()
+
+        implicitWidth: 30
+        implicitHeight: 30
+
+        Rectangle {
+            anchors.fill: parent
+            radius: Theme.radiusSmall
+            color: btnMa.containsMouse ? (btn.danger ? "#26FF453A" : "#14FFFFFF") : "transparent"
+            Behavior on color { ColorAnimation { duration: Theme.animFast } }
+        }
+
+        AppIcon {
+            anchors.centerIn: parent
+            width: 15
+            height: 15
+            name: btn.icon
+            iconColor: btnMa.containsMouse ? (btn.danger ? Theme.danger : Theme.text) : Theme.textSecondary
+        }
+
+        MouseArea {
+            id: btnMa
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: btn.clicked()
+        }
+
+        ToolTip.visible: btnMa.containsMouse && btn.tip.length > 0
+        ToolTip.text: btn.tip
+        ToolTip.delay: 600
     }
 
     ColumnLayout {
@@ -206,7 +365,7 @@ Rectangle {
 
             Button {
                 highlighted: true
-                onClicked: addDialog.open()
+                onClicked: serverForm.askAdd()
 
                 contentItem: RowLayout {
                     spacing: 6
@@ -275,8 +434,8 @@ Rectangle {
         // 连接提示
         Text {
             Layout.fillWidth: true
-            text: "提示：需要密钥认证（BatchMode 不支持密码）。请先用 ssh-copy-id user@host 配置免密登录；"
-                  + "也支持 ~/.ssh/config 中的 Host 别名（填别名本身，不带 ssh 前缀）。"
+            text: "支持密钥认证（需 ssh-copy-id 免密）和密码认证；"
+                  + "地址栏可直接粘贴完整命令（如 ssh -p 6005 user@host），端口自动拆分。"
             font.pixelSize: Theme.fontSmall
             color: Theme.textTertiary
             wrapMode: Text.WordWrap
@@ -293,8 +452,18 @@ Rectangle {
             delegate: ServerCard {
                 width: ListView.view.width
                 server: modelData
-                onConnectRequested: remoteManager.connectToServer(modelData.name)
-                onEditRequested: editDialog.ask(modelData.name, modelData.target)
+                onConnectRequested: {
+                    if (remoteManager.needsPassword(modelData.name)) {
+                        passwordDialog.ask(modelData.name)
+                    } else {
+                        remoteManager.connectToServer(modelData.name, "")
+                    }
+                }
+                onEditRequested: serverForm.askEdit(
+                    modelData.name, modelData.target,
+                    modelData.port || 0,
+                    modelData.authType || "key",
+                    !!modelData.password)
                 onRemoveRequested: remoteManager.removeServer(modelData.name)
             }
 
@@ -329,91 +498,80 @@ Rectangle {
         }
     }
 
-    // ===== 添加服务器对话框 =====
-    Dialog {
-        id: addDialog
-        title: "添加服务器"
-        modal: true
-        anchors.centerIn: parent
-        width: 420
-        standardButtons: Dialog.Ok | Dialog.Cancel
-
-        contentItem: ColumnLayout {
-            spacing: 12
-
-            Text { text: "备注名:"; color: Theme.text; font.pixelSize: Theme.fontNormal }
-            TextField {
-                id: serverNameField
-                Layout.fillWidth: true
-                placeholderText: "例如: 生产服务器"
-            }
-
-            Text { text: "SSH 地址:"; color: Theme.text; font.pixelSize: Theme.fontNormal }
-            TextField {
-                id: serverTargetField
-                Layout.fillWidth: true
-                placeholderText: "user@192.168.1.100 或别名 home（不要带 ssh 前缀）"
-            }
-        }
-
-        onOpened: serverNameField.forceActiveFocus()
-
-        onAccepted: {
-            remoteManager.addServer(serverNameField.text, serverTargetField.text)
-            serverNameField.text = ""
-            serverTargetField.text = ""
-        }
-
-        onRejected: {
-            serverNameField.text = ""
-            serverTargetField.text = ""
-        }
+    // ===== 添加/编辑服务器对话框 =====
+    ServerFormDialog {
+        id: serverForm
     }
 
-    // ===== 编辑服务器对话框 =====
+    // ===== 密码输入对话框（连接时）=====
     Dialog {
-        id: editDialog
-        title: "编辑服务器"
+        id: passwordDialog
+        title: "输入密码"
         modal: true
         anchors.centerIn: parent
-        width: 420
+        width: 400
         standardButtons: Dialog.Ok | Dialog.Cancel
 
-        property string originalName: ""
+        property string serverName: ""
 
-        function ask(name, target) {
-            originalName = name
-            editNameField.text = name
-            editTargetField.text = target
+        function ask(name) {
+            serverName = name
+            pwdField.text = ""
+            rememberConnect.checked = true
             open()
         }
 
         contentItem: ColumnLayout {
             spacing: 12
 
-            Text { text: "备注名:"; color: Theme.text; font.pixelSize: Theme.fontNormal }
-            TextField {
-                id: editNameField
-                Layout.fillWidth: true
+            Text {
+                text: "服务器 " + passwordDialog.serverName + " 使用密码认证："
+                color: Theme.text
+                font.pixelSize: Theme.fontNormal
             }
 
-            Text { text: "SSH 地址:"; color: Theme.text; font.pixelSize: Theme.fontNormal }
             TextField {
-                id: editTargetField
+                id: pwdField
                 Layout.fillWidth: true
-                placeholderText: "user@192.168.1.100 或别名 home（不要带 ssh 前缀）"
+                echoMode: TextInput.Password
+                placeholderText: "登录密码"
+            }
+
+            CheckBox {
+                id: rememberConnect
+                text: "记住密码（下次免输）"
+                checked: true
+                contentItem: Text {
+                    text: rememberConnect.text
+                    color: Theme.textTertiary
+                    font.pixelSize: Theme.fontSmall
+                    leftPadding: rememberConnect.indicator.width + 6
+                    verticalAlignment: Text.AlignVCenter
+                }
             }
         }
 
-        onOpened: editNameField.forceActiveFocus()
+        onOpened: pwdField.forceActiveFocus()
 
         onAccepted: {
-            remoteManager.editServer(editDialog.originalName,
-                                     editNameField.text, editTargetField.text)
+            // 勾选记住：先写回服务器记录，再连接（连接时使用保存的密码）
+            if (rememberConnect.checked) {
+                const s = remoteManager.servers.find(function (x) {
+                    return x.name === passwordDialog.serverName
+                })
+                if (s) {
+                    remoteManager.editServer(s.name, s.name, s.target,
+                                             s.port || 0, s.authType || "password",
+                                             pwdField.text, true)
+                }
+                remoteManager.connectToServer(passwordDialog.serverName, "")
+            } else {
+                remoteManager.connectToServer(passwordDialog.serverName, pwdField.text)
+            }
         }
     }
 
-    // 消息转发（RemoteManager 的错误/成功 → 本页弹窗）
+    // 消息转发
     Connections {
         target: remoteManager
         function onErrorOccurred(message) {

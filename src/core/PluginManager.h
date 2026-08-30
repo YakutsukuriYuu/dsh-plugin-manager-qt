@@ -59,7 +59,9 @@ public:
     Q_INVOKABLE void openProfileDirectory();
     Q_INVOKABLE void setDshExecutable(const QString &path);   // 仅本机模式有效
     Q_INVOKABLE void useLocalBackend();
-    Q_INVOKABLE bool useRemoteBackend(const QString &target, const QString &label, QString *errorMessage = nullptr);
+    Q_INVOKABLE bool useRemoteBackend(const QString &target, const QString &label,
+                                      int port = 0, const QString &password = QString(),
+                                      QString *errorMessage = nullptr);
 
 signals:
     void pluginsChanged();

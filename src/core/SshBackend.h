@@ -5,52 +5,96 @@
 #include <QProcess>
 #include <QClipboard>
 #include <QGuiApplication>
+#include <QFile>
+#include <QDir>
+#include <QTemporaryDir>
 
 /**
- * SSH 远程后端：通过 ssh user@host "命令" 管理远程服务器上的 DSH 插件。
+ * SSH 远程后端：通过 ssh 管理远程服务器上的 DSH 插件。
  *
- * 关键设计：
- *  - 连接参数：BatchMode（免密，仅密钥认证）+ 连接超时 8s + 自动接受新主机指纹
- *  - 扫描合并为单次往返：一条 shell 脚本输出所有包的 package.json，
- *    用 @@@ENTRY| 分隔符切分，避免逐文件 SSH 往返（100+ 次 × 200ms 不可接受）
- *  - dsh 命令路径在连接时通过登录 shell（zsh -lc / bash -lc）探测并缓存
- *  - 文件写入走 stdin 管道：ssh host 'cat > path'
+ * 连接能力：
+ *  - 自定义端口：构造时传入 port（0 = 默认 22）
+ *  - 密钥认证（默认）：BatchMode，不交互
+ *  - 密码认证：OpenSSH 官方 SSH_ASKPASS 机制——
+ *    生成一个 0700 权限的临时脚本输出密码，SSH_ASKPASS_REQUIRE=force
+ *    强制使用，避免依赖 sshpass。后端销毁时删除脚本。
+ *
+ * 其他关键点：
+ *  - 扫描合并为单次往返（@@@ENTRY 分隔符），避免逐文件卡顿
+ *  - nullglob/null_glob 兼容 bash/zsh 空目录
+ *  - dsh 路径通过登录 shell（zsh -lc / bash -lc）探测缓存
  */
 class SshBackend : public PluginBackend
 {
 public:
     /**
-     * @param target  ssh 目标：user@host 或 ~/.ssh/config 中的别名
-     * @param label   显示名称（服务器备注名）
+     * @param target  ssh 目标：user@host 或 ~/.ssh/config 别名
+     * @param label   显示名称
+     * @param port    SSH 端口（0 = 默认）
      */
-    explicit SshBackend(const QString &target, const QString &label)
-        : m_target(target), m_label(label)
+    explicit SshBackend(const QString &target, const QString &label, int port = 0)
+        : m_target(target), m_label(label), m_port(port)
     {
+    }
+
+    ~SshBackend() override
+    {
+        // 清理 askpass 临时脚本（含密码）
+        m_askpassDir.remove();
+    }
+
+    // 设置密码认证（连接前调用）。设置后该后端不再使用 BatchMode。
+    void setPassword(const QString &password)
+    {
+        if (password.isEmpty())
+            return;
+        m_password = password;
+
+        // 生成 askpass 脚本：printf 输出密码（单引号转义）
+        if (!m_askpassDir.isValid())
+            return;
+        const QString scriptPath = m_askpassDir.path() + "/askpass.sh";
+        QFile f(scriptPath);
+        if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate))
+            return;
+        QString escaped = password;
+        escaped.replace('\'', QStringLiteral("'\\''"));
+        f.write("#!/bin/sh\nprintf '%s\\n' '" + escaped.toUtf8() + "'\n");
+        f.close();
+        f.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
+        m_askpassPath = scriptPath;
     }
 
     // 连接初始化：探测 dshHome 与 dsh 路径。成功返回 true，失败填 errorMessage。
     bool connectInit(QString *errorMessage)
     {
-        // 1. 基本连通性 + 远程 HOME
         QString out;
         if (!ssh(QStringLiteral("echo $HOME"), &out)) {
             if (errorMessage)
                 *errorMessage = "SSH 连接失败（" + m_target + "）。\n"
-                                "请确认：网络可达、密钥认证已配置（BatchMode 不支持密码输入）。\n" + out;
+                                + (m_password.isEmpty()
+                                   ? "当前为密钥认证：请确认已配置免密登录（ssh-copy-id）。\n"
+                                   : "请确认密码正确、端口可达。\n")
+                                + out;
             return false;
         }
         m_dshHome = out.trimmed() + "/.dsh";
 
-        // 2. 探测 dsh 命令（登录 shell 才能拿到完整 PATH）
+        // 探测 dsh 命令（登录 shell 才能拿到完整 PATH）
         QString dshPath;
         ssh(QStringLiteral("zsh -lc 'command -v dsh' 2>/dev/null || "
                            "bash -lc 'command -v dsh' 2>/dev/null || true"), &dshPath);
         m_dshPath = dshPath.trimmed();
-        // 找不到不视为连接失败（只影响安装/卸载功能）
         return true;
     }
 
-    QString displayName() const override { return m_label + " (" + m_target + ")"; }
+    QString displayName() const override
+    {
+        QString t = m_target;
+        if (m_port > 0)
+            t += ":" + QString::number(m_port);
+        return m_label + " (" + t + ")";
+    }
     bool isRemote() const override { return true; }
     QString dshHome() const override { return m_dshHome; }
     QString dshPath() const { return m_dshPath; }
@@ -104,7 +148,6 @@ public:
         if (!ssh(script, &out, {}, 60000))
             return entries;
 
-        // 按分隔符切分
         const QStringList chunks = out.split(QStringLiteral("@@@ENTRY|"));
         for (const QString &chunk : chunks) {
             if (chunk.trimmed().isEmpty())
@@ -143,7 +186,6 @@ public:
                 *output = "远程服务器上未找到 dsh 命令（已尝试登录 shell 探测 PATH）";
             return false;
         }
-        // 参数逐个单引号转义
         QStringList quoted;
         for (const QString &a : args)
             quoted << "'" + escape(a) + "'";
@@ -171,13 +213,30 @@ private:
              const QByteArray &stdinData = {}, int timeoutMs = 30000)
     {
         QProcess process;
-        QStringList args = {
-            "-o", "BatchMode=yes",
-            "-o", "ConnectTimeout=8",
-            "-o", "StrictHostKeyChecking=accept-new",
-            m_target,
-            remoteCommand
-        };
+        QStringList args;
+
+        if (m_password.isEmpty()) {
+            // 密钥认证：禁用一切交互
+            args << "-o" << "BatchMode=yes";
+        } else {
+            // 密码认证：SSH_ASKPASS 机制（不依赖 sshpass）
+            args << "-o" << "NumberOfPasswordPrompts=1"
+                 << "-o" << "PreferredAuthentications=password"
+                 << "-o" << "PubkeyAuthentication=no";
+
+            QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+            env.insert("SSH_ASKPASS", m_askpassPath);
+            env.insert("SSH_ASKPASS_REQUIRE", "force");
+            env.insert("DISPLAY", ":0");  // 部分 OpenSSH 版本要求
+            process.setProcessEnvironment(env);
+        }
+
+        args << "-o" << "ConnectTimeout=8"
+             << "-o" << "StrictHostKeyChecking=accept-new";
+        if (m_port > 0)
+            args << "-p" << QString::number(m_port);
+        args << m_target << remoteCommand;
+
         process.start("ssh", args);
         if (!stdinData.isEmpty()) {
             process.write(stdinData);
@@ -196,6 +255,10 @@ private:
 
     QString m_target;
     QString m_label;
+    int m_port = 0;
     QString m_dshHome;
     QString m_dshPath;
+    QString m_password;
+    QString m_askpassPath;
+    QTemporaryDir m_askpassDir;   // 销毁时自动删除（含密码的脚本）
 };
