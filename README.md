@@ -4,6 +4,24 @@
 
 为 DSH 提供一个图形化的插件与运行环境管理工具：浏览/安装/启停插件、管理 tmux 中的 DSH 会话，无需记忆命令行操作。
 
+## ⬇️ 下载安装
+
+在 [Releases](https://github.com/YakutsukuriYuu/dsh-plugin-manager-qt/releases) 页面下载最新的 `dsh-plugin-manager-macos-arm64.dmg`（macOS Apple Silicon）。
+
+> **注意**：应用未进行 Apple 签名，首次打开时 macOS 会拦截。两种解决方法：
+>
+> 1. 右键点击应用 →「打开」→ 在弹窗中点「打开」
+> 2. 或终端执行：`xattr -cr /Applications/dsh-plugin-manager.app`
+
+## 🚀 发版（维护者）
+
+推送 tag 即可触发 GitHub Actions 自动编译并发布：
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
 ## ✨ 功能
 
 ### 📦 插件管理

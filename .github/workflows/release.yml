@@ -1,0 +1,43 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'          # 推送 v0.1.0 之类的 tag 时触发
+  workflow_dispatch:  # 也允许在 Actions 页面手动触发
+
+permissions:
+  contents: write     # 允许创建 Release 并上传产物
+
+jobs:
+  macos:
+    runs-on: macos-14   # Apple Silicon (arm64)
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Qt 6
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.*'
+          arch: 'clang_64'
+          modules: ''
+
+      - name: 配置与编译
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$Qt6_DIR"
+          cmake --build build -j$(sysctl -n hw.ncpu)
+
+      - name: 打包 DMG
+        run: |
+          # macdeployqt 会把依赖的 Qt 框架拷进 .app，使其可在无 Qt 的机器上运行
+          macdeployqt build/bin/dsh-plugin-manager.app -qmldir=src/ui/qml -dmg
+          mv build/bin/dsh-plugin-manager.dmg dsh-plugin-manager-macos-arm64.dmg
+          ls -lh dsh-plugin-manager-macos-arm64.dmg
+
+      - name: 发布 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dsh-plugin-manager-macos-arm64.dmg
+          generate_release_notes: true
