@@ -213,20 +213,23 @@ void RemoteManager::connectToServer(const QString &name, const QString &password
     }
 
     setConnecting(true);
-    QString error;
-    const bool ok = m_pluginManager->useRemoteBackend(
+
+    // 异步连接：结果经 remoteConnectFinished 信号返回
+    QObject::connect(m_pluginManager, &PluginManager::remoteConnectFinished,
+                     this, [this, name](bool ok, const QString &error) {
+        setConnecting(false);
+        if (ok) {
+            emit operationSucceeded("已连接到 " + name);
+        } else {
+            emit errorOccurred(error.isEmpty() ? "连接失败" : error);
+        }
+    }, Qt::SingleShotConnection);
+
+    m_pluginManager->useRemoteBackendAsync(
         server.value("target").toString(),
         name,
         server.value("port", 0).toInt(),
-        server.value("authType").toString() == "password" ? pwd : QString(),
-        &error);
-    setConnecting(false);
-
-    if (ok) {
-        emit operationSucceeded("已连接到 " + name);
-    } else {
-        emit errorOccurred(error.isEmpty() ? "连接失败" : error);
-    }
+        server.value("authType").toString() == "password" ? pwd : QString());
 }
 
 void RemoteManager::disconnectRemote()

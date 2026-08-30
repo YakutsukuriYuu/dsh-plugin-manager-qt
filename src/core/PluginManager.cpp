@@ -6,7 +6,120 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QSettings>
+#include <QFutureWatcher>
+#include <QtConcurrent>
 #include <algorithm>
+#include <memory>
+
+namespace {
+
+// ===== 与 PluginManager 解耦的扫描实现（可在工作线程运行）=====
+
+QStringList readEnabledBundlesImpl(PluginBackend *backend, const QString &profileDir)
+{
+    QStringList bundles;
+    const QString content = backend->readFile(profileDir + "/package.json");
+    if (content.isEmpty())
+        return bundles;
+
+    const QJsonArray arr = QJsonDocument::fromJson(content.toUtf8()).object()
+                               .value("dsh").toObject()
+                               .value("profile").toObject()
+                               .value("bundles").toArray();
+    for (const auto &v : arr)
+        bundles << v.toString();
+    return bundles;
+}
+
+QVariantMap analyzePluginImpl(const QString &resolvedPath, const QByteArray &packageJson,
+                              const QStringList &enabledBundles, const QString &profile)
+{
+    QVariantMap result;
+    const QJsonDocument doc = QJsonDocument::fromJson(packageJson);
+    if (doc.isNull() || !doc.isObject())
+        return result;
+
+    const QJsonObject packageJsonObj = doc.object();
+    const QJsonObject dshConfig = packageJsonObj.value("dsh").toObject();
+    if (dshConfig.isEmpty())
+        return result; // 不是 DSH 插件
+
+    const QString name = packageJsonObj.value("name").toString();
+    const QJsonObject bundleConfig = dshConfig.value("bundle").toObject();
+
+    result["id"] = name;
+    result["name"] = name;
+    result["version"] = packageJsonObj.value("version").toString();
+    result["description"] = packageJsonObj.value("description").toString();
+    result["installed"] = true;
+    result["enabled"] = enabledBundles.contains(name);
+    result["hasBundlePatch"] = !bundleConfig.value("patch").toString().isEmpty();
+    result["path"] = resolvedPath;
+    result["profile"] = profile;
+    return result;
+}
+
+QVariantList scanPluginsImpl(PluginBackend *backend, const QString &profile)
+{
+    QVariantList found;
+    const QString profileDir = backend->dshHome() + "/profiles/" + profile;
+
+    const QStringList enabledBundles = readEnabledBundlesImpl(backend, profileDir);
+
+    // Profile 直接声明的依赖（dsh plugin add 安装的包）
+    QSet<QString> profileDeps;
+    {
+        const QString content = backend->readFile(profileDir + "/package.json");
+        const QJsonObject deps = QJsonDocument::fromJson(content.toUtf8())
+                                     .object().value("dependencies").toObject();
+        for (auto it = deps.begin(); it != deps.end(); ++it)
+            profileDeps.insert(it.key());
+    }
+
+    const auto packageEntries = backend->listPackages(profile);
+
+    // 第一遍：收集所有包的 dependencies，构建「被其他包依赖」集合
+    QSet<QString> transitiveDeps;
+    for (const auto &entry : packageEntries) {
+        const QJsonDocument doc = QJsonDocument::fromJson(entry.packageJson);
+        if (doc.isNull() || !doc.isObject())
+            continue;
+        const QJsonObject deps = doc.object().value("dependencies").toObject();
+        for (auto it = deps.begin(); it != deps.end(); ++it)
+            transitiveDeps.insert(it.key());
+    }
+
+    // 第二遍：筛出 DSH 插件，并标记「直接安装」
+    for (const auto &entry : packageEntries) {
+        QVariantMap plugin = analyzePluginImpl(entry.resolvedPath, entry.packageJson,
+                                               enabledBundles, profile);
+        if (plugin.isEmpty())
+            continue;
+
+        const QString name = plugin.value("name").toString();
+        // 直接安装 = 在 profile dependencies 中，或不被任何其他包依赖
+        const bool direct = profileDeps.contains(name) || !transitiveDeps.contains(name);
+        plugin["direct"] = direct;
+        plugin["entryPath"] = entry.entryPath;
+        plugin["inProfileDeps"] = profileDeps.contains(name);
+        found << plugin;
+    }
+
+    // 排序：直接安装的在前，名称升序。
+    // 注意：不按启用状态排序，避免切换启用时列表位置跳动。
+    std::sort(found.begin(), found.end(), [](const QVariant &a, const QVariant &b) {
+        const QVariantMap pa = a.toMap();
+        const QVariantMap pb = b.toMap();
+        const bool da = pa.value("direct").toBool();
+        const bool db = pb.value("direct").toBool();
+        if (da != db) return da > db;
+        return pa.value("name").toString() < pb.value("name").toString();
+    });
+
+    return found;
+}
+
+} // namespace
 
 PluginManager::PluginManager(QObject *parent)
     : QObject(parent)
@@ -81,6 +194,76 @@ bool PluginManager::useRemoteBackend(const QString &target, const QString &label
     return true;
 }
 
+// 异步远程连接：connectInit + 首次扫描全部在工作线程执行，
+// 主线程不被阻塞（UI 可显示等待动画）。
+void PluginManager::useRemoteBackendAsync(const QString &target, const QString &label,
+                                          int port, const QString &password)
+{
+    setLoading(true);
+
+    // 结果载体：backend 在工作线程构建，完成后转移到主线程
+    struct Result {
+        std::unique_ptr<SshBackend> backend;
+        bool ok = false;
+        QString error;
+        QStringList profiles;
+        QString currentProfile;
+        QVariantList plugins;
+    };
+
+    QFuture<std::shared_ptr<Result>> future = QtConcurrent::run(
+        [target, label, port, password]() -> std::shared_ptr<Result> {
+            auto res = std::make_shared<Result>();
+            auto remote = std::make_unique<SshBackend>(target, label, port);
+            if (!password.isEmpty())
+                remote->setPassword(password);
+
+            if (!remote->connectInit(&res->error))
+                return res;
+
+            // 连接成功后立即在同一工作线程完成首次扫描
+            res->profiles = remote->listProfiles();
+            if (!res->profiles.isEmpty()) {
+                res->currentProfile = res->profiles.first();
+                res->plugins = scanPluginsImpl(remote.get(), res->currentProfile);
+            }
+            res->backend = std::move(remote);
+            res->ok = true;
+            return res;
+        });
+
+    auto *watcher = new QFutureWatcher<std::shared_ptr<Result>>(this);
+    connect(watcher, &QFutureWatcher<std::shared_ptr<Result>>::finished,
+            this, [this, watcher]() {
+        auto res = watcher->result();
+        watcher->deleteLater();
+
+        if (!res->ok) {
+            setLoading(false);
+            emit remoteConnectFinished(false, res->error);
+            return;
+        }
+
+        // 主线程接管后端与扫描结果
+        m_backend = std::move(res->backend);
+        m_currentProfile.clear();
+        emit backendChanged();
+
+        m_profiles = res->profiles;
+        emit profilesChanged();
+
+        m_currentProfile = res->currentProfile;
+        emit currentProfileChanged();
+
+        m_plugins = res->plugins;
+        setLoading(false);
+        emit pluginsChanged();
+
+        emit remoteConnectFinished(true, QString());
+    });
+    watcher->setFuture(future);
+}
+
 void PluginManager::setCurrentProfile(const QString &profile)
 {
     if (m_currentProfile != profile && m_profiles.contains(profile)) {
@@ -122,18 +305,7 @@ void PluginManager::scanProfiles()
 
 QStringList PluginManager::readEnabledBundles() const
 {
-    QStringList bundles;
-    const QString content = m_backend->readFile(profileDir() + "/package.json");
-    if (content.isEmpty())
-        return bundles;
-
-    const QJsonArray arr = QJsonDocument::fromJson(content.toUtf8()).object()
-                               .value("dsh").toObject()
-                               .value("profile").toObject()
-                               .value("bundles").toArray();
-    for (const auto &v : arr)
-        bundles << v.toString();
-    return bundles;
+    return readEnabledBundlesImpl(m_backend.get(), profileDir());
 }
 
 bool PluginManager::writeEnabledBundles(const QStringList &bundles)
@@ -163,90 +335,15 @@ bool PluginManager::writeEnabledBundles(const QStringList &bundles)
 QVariantMap PluginManager::analyzePlugin(const QString &resolvedPath, const QByteArray &packageJson,
                                          const QStringList &enabledBundles) const
 {
-    QVariantMap result;
-    const QJsonDocument doc = QJsonDocument::fromJson(packageJson);
-    if (doc.isNull() || !doc.isObject())
-        return result;
-
-    const QJsonObject packageJsonObj = doc.object();
-    const QJsonObject dshConfig = packageJsonObj.value("dsh").toObject();
-    if (dshConfig.isEmpty())
-        return result; // 不是 DSH 插件
-
-    const QString name = packageJsonObj.value("name").toString();
-    const QJsonObject bundleConfig = dshConfig.value("bundle").toObject();
-
-    result["id"] = name;
-    result["name"] = name;
-    result["version"] = packageJsonObj.value("version").toString();
-    result["description"] = packageJsonObj.value("description").toString();
-    result["installed"] = true;
-    result["enabled"] = enabledBundles.contains(name);
-    result["hasBundlePatch"] = !bundleConfig.value("patch").toString().isEmpty();
-    result["path"] = resolvedPath;
-    result["profile"] = m_currentProfile;
-    return result;
+    return analyzePluginImpl(resolvedPath, packageJson, enabledBundles, m_currentProfile);
 }
 
 void PluginManager::scanPlugins()
 {
     setLoading(true);
-    QVariantList found;
-
-    if (!m_currentProfile.isEmpty()) {
-        const QStringList enabledBundles = readEnabledBundles();
-
-        // Profile 直接声明的依赖（dsh plugin add 安装的包）
-        QSet<QString> profileDeps;
-        {
-            const QString content = m_backend->readFile(profileDir() + "/package.json");
-            const QJsonObject deps = QJsonDocument::fromJson(content.toUtf8())
-                                         .object().value("dependencies").toObject();
-            for (auto it = deps.begin(); it != deps.end(); ++it)
-                profileDeps.insert(it.key());
-        }
-
-        const auto packageEntries = m_backend->listPackages(m_currentProfile);
-
-        // 第一遍：收集所有包的 dependencies，构建「被其他包依赖」集合
-        QSet<QString> transitiveDeps;
-        for (const auto &entry : packageEntries) {
-            const QJsonDocument doc = QJsonDocument::fromJson(entry.packageJson);
-            if (doc.isNull() || !doc.isObject())
-                continue;
-            const QJsonObject deps = doc.object().value("dependencies").toObject();
-            for (auto it = deps.begin(); it != deps.end(); ++it)
-                transitiveDeps.insert(it.key());
-        }
-
-        // 第二遍：筛出 DSH 插件，并标记「直接安装」
-        for (const auto &entry : packageEntries) {
-            QVariantMap plugin = analyzePlugin(entry.resolvedPath, entry.packageJson, enabledBundles);
-            if (plugin.isEmpty())
-                continue;
-
-            const QString name = plugin.value("name").toString();
-            // 直接安装 = 在 profile dependencies 中，或不被任何其他包依赖
-            const bool direct = profileDeps.contains(name) || !transitiveDeps.contains(name);
-            plugin["direct"] = direct;
-            plugin["entryPath"] = entry.entryPath;
-            plugin["inProfileDeps"] = profileDeps.contains(name);
-            found << plugin;
-        }
-
-        // 排序：直接安装的在前，名称升序。
-        // 注意：不按启用状态排序，避免切换启用时列表位置跳动。
-        std::sort(found.begin(), found.end(), [](const QVariant &a, const QVariant &b) {
-            const QVariantMap pa = a.toMap();
-            const QVariantMap pb = b.toMap();
-            const bool da = pa.value("direct").toBool();
-            const bool db = pb.value("direct").toBool();
-            if (da != db) return da > db;
-            return pa.value("name").toString() < pb.value("name").toString();
-        });
-    }
-
-    m_plugins = found;
+    m_plugins = m_currentProfile.isEmpty()
+                ? QVariantList()
+                : scanPluginsImpl(m_backend.get(), m_currentProfile);
     setLoading(false);
     emit pluginsChanged();
 }

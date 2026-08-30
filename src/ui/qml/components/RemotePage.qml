@@ -503,6 +503,46 @@ Rectangle {
         id: serverForm
     }
 
+    // ===== 连接等待动画（模态，连接期间显示）=====
+    Dialog {
+        id: connectingDialog
+        modal: true
+        anchors.centerIn: parent
+        width: 320
+        closePolicy: Popup.NoAutoClose
+        standardButtons: Dialog.NoButton
+
+        // 连接状态驱动显隐
+        visible: remoteManager.connecting
+
+        contentItem: ColumnLayout {
+            spacing: 16
+
+            // 旋转动画
+            BusyIndicator {
+                Layout.alignment: Qt.AlignHCenter
+                running: connectingDialog.visible
+                implicitWidth: 48
+                implicitHeight: 48
+            }
+
+            Text {
+                text: "正在连接服务器…"
+                font.pixelSize: Theme.fontNormal
+                color: Theme.text
+                Layout.alignment: Qt.AlignHCenter
+            }
+
+            Text {
+                text: "首次连接可能需要 5~15 秒\n（正在扫描远程插件）"
+                font.pixelSize: Theme.fontSmall
+                color: Theme.textTertiary
+                horizontalAlignment: Text.AlignHCenter
+                Layout.alignment: Qt.AlignHCenter
+            }
+        }
+    }
+
     // ===== 密码输入对话框（连接时）=====
     Dialog {
         id: passwordDialog

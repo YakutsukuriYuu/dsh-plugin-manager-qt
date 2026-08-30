@@ -62,6 +62,10 @@ public:
     Q_INVOKABLE bool useRemoteBackend(const QString &target, const QString &label,
                                       int port = 0, const QString &password = QString(),
                                       QString *errorMessage = nullptr);
+    // 异步版本：连接 + 首次扫描在工作线程执行，完成后发 remoteConnectFinished。
+    // 期间 loading 为 true，UI 可显示等待动画而不阻塞事件循环。
+    Q_INVOKABLE void useRemoteBackendAsync(const QString &target, const QString &label,
+                                           int port, const QString &password);
 
 signals:
     void pluginsChanged();
@@ -71,6 +75,7 @@ signals:
     void dshExecutableChanged();
     void lastOutputChanged();
     void backendChanged();
+    void remoteConnectFinished(bool ok, const QString &error);
     void errorOccurred(const QString &message);
     void operationSucceeded(const QString &message);
 

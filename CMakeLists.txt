@@ -19,6 +19,7 @@ find_package(Qt6 REQUIRED COMPONENTS
     Widgets
     Svg
     Network
+    Concurrent
 )
 
 qt_policy(SET QTP0001 NEW)
@@ -76,6 +77,7 @@ target_link_libraries(dsh-plugin-manager PRIVATE
     Qt6::Widgets
     Qt6::Svg
     Qt6::Network
+    Qt6::Concurrent
 )
 
 # 界面图片资源（侧边栏 Logo）
