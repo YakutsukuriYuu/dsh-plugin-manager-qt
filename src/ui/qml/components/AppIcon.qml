@@ -133,6 +133,51 @@ Canvas {
             ctx.lineTo(13, 11.5)
             ctx.stroke()
             break
+
+        case "grid": {      // 插件管理（四宫格圆角方块）
+            const g = 1.6                    // 间距
+            const cell = (16 - 5 - g) / 2    // 单元格边长 ≈ 4.7
+            const cr = 1.3                   // 单元格圆角
+            const ox = 2.5, oy = 2.5
+            for (let i = 0; i < 4; ++i) {
+                const cx0 = ox + (i % 2) * (cell + g)
+                const cy0 = oy + Math.floor(i / 2) * (cell + g)
+                ctx.beginPath()
+                ctx.moveTo(cx0 + cr, cy0)
+                ctx.lineTo(cx0 + cell - cr, cy0)
+                ctx.arcTo(cx0 + cell, cy0, cx0 + cell, cy0 + cr, cr)
+                ctx.lineTo(cx0 + cell, cy0 + cell - cr)
+                ctx.arcTo(cx0 + cell, cy0 + cell, cx0 + cell - cr, cy0 + cell, cr)
+                ctx.lineTo(cx0 + cr, cy0 + cell)
+                ctx.arcTo(cx0, cy0 + cell, cx0, cy0 + cell - cr, cr)
+                ctx.lineTo(cx0, cy0 + cr)
+                ctx.arcTo(cx0, cy0, cx0 + cr, cy0, cr)
+                ctx.closePath()
+                ctx.stroke()
+            }
+            break
+        }
+
+        case "gear": {      // 设置（齿轮）
+            const gcx = 8, gcy = 8
+            // 齿：8 根辐条
+            for (let i = 0; i < 8; ++i) {
+                const a = i * Math.PI / 4
+                ctx.beginPath()
+                ctx.moveTo(gcx + 4.4 * Math.cos(a), gcy + 4.4 * Math.sin(a))
+                ctx.lineTo(gcx + 5.9 * Math.cos(a), gcy + 5.9 * Math.sin(a))
+                ctx.stroke()
+            }
+            // 外圈
+            ctx.beginPath()
+            ctx.arc(gcx, gcy, 4.4, 0, Math.PI * 2)
+            ctx.stroke()
+            // 中心孔
+            ctx.beginPath()
+            ctx.arc(gcx, gcy, 1.7, 0, Math.PI * 2)
+            ctx.stroke()
+            break
+        }
         }
     }
 }

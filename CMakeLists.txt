@@ -66,6 +66,13 @@ target_link_libraries(dsh-plugin-manager PRIVATE
     Qt6::Widgets
 )
 
+# 界面图片资源（侧边栏 Logo）
+qt_add_resources(dsh-plugin-manager "images"
+    PREFIX "/images"
+    BASE "resources"
+    FILES resources/logo.png
+)
+
 set_target_properties(dsh-plugin-manager PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
     MACOSX_BUNDLE TRUE

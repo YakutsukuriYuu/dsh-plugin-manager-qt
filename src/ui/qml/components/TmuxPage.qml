@@ -1,11 +1,12 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
+import QtQuick.Effects
 import DshPluginManager
 
 Rectangle {
     id: root
-    color: Theme.background
+    color: Theme.window
 
     // ===== 会话卡片 =====
     component SessionCard: Rectangle {
@@ -17,11 +18,24 @@ Rectangle {
         signal restart()
         signal kill()
 
-        height: 96
-        radius: Theme.radius
-        color: cardMa.containsMouse ? Theme.surfaceHover : Theme.surface
-        border.color: session && session.isDsh ? Theme.primary : "transparent"
+        height: 92
+        radius: Theme.radiusLarge
+        color: cardMa.containsMouse ? Theme.cardHover : Theme.card
+        border.color: session && session.isDsh
+                      ? "#3D5470FB" : Theme.cardBorder
         border.width: 1
+
+        Behavior on color { ColorAnimation { duration: Theme.animFast } }
+        Behavior on border.color { ColorAnimation { duration: Theme.animFast } }
+
+        // 柔和投影（悬停加深）
+        layer.enabled: true
+        layer.effect: MultiEffect {
+            shadowEnabled: true
+            shadowBlur: Theme.shadowBlur
+            shadowColor: cardMa.containsMouse ? Theme.shadowHoverColor : Theme.shadowColor
+            shadowVerticalOffset: cardMa.containsMouse ? Theme.shadowHoverYOff : Theme.shadowYOff
+        }
 
         MouseArea {
             id: cardMa
@@ -32,38 +46,44 @@ Rectangle {
 
         RowLayout {
             anchors.fill: parent
-            anchors.margins: 14
+            anchors.leftMargin: 16
+            anchors.rightMargin: 16
+            anchors.topMargin: 12
+            anchors.bottomMargin: 12
             spacing: 14
 
             // 终端图标
             Rectangle {
                 Layout.preferredWidth: 48
                 Layout.preferredHeight: 48
-                radius: Theme.radius
-                color: session && session.isDsh ? Theme.primary : "#404040"
+                Layout.alignment: Qt.AlignVCenter
+                radius: 10
+                color: session && session.isDsh ? Theme.primaryBg : Theme.field
+                border.color: session && session.isDsh ? "#3D5470FB" : Theme.separator
+                border.width: 1
 
-                Text {
+                AppIcon {
                     anchors.centerIn: parent
-                    text: ">_"
-                    font.pixelSize: 18
-                    font.bold: true
-                    font.family: "Menlo"
-                    color: "white"
+                    width: 20
+                    height: 20
+                    name: "terminal"
+                    iconColor: session && session.isDsh ? Theme.primaryHover : Theme.textSecondary
                 }
             }
 
             // 会话信息
             ColumnLayout {
                 Layout.fillWidth: true
-                spacing: 3
+                Layout.alignment: Qt.AlignVCenter
+                spacing: 2
 
                 RowLayout {
                     spacing: 8
 
                     Text {
                         text: card.session ? card.session.name : ""
-                        font.pixelSize: Theme.fontNormal
-                        font.bold: true
+                        font.pixelSize: Theme.fontHeadline
+                        font.weight: Font.DemiBold
                         color: Theme.text
                     }
 
@@ -71,17 +91,17 @@ Rectangle {
                     Rectangle {
                         visible: card.session && card.session.isDsh
                         width: dshText.implicitWidth + 12
-                        height: 20
-                        radius: 4
-                        color: Theme.primary
+                        height: 18
+                        radius: 9
+                        color: Theme.primaryBg
 
                         Text {
                             id: dshText
                             anchors.centerIn: parent
                             text: "DSH"
-                            font.pixelSize: 10
-                            font.bold: true
-                            color: "white"
+                            font.pixelSize: Theme.fontMini
+                            font.weight: Font.DemiBold
+                            color: Theme.primaryHover
                         }
                     }
 
@@ -89,16 +109,16 @@ Rectangle {
                     Rectangle {
                         visible: card.session && card.session.attached
                         width: attachText.implicitWidth + 12
-                        height: 20
-                        radius: 4
-                        color: Theme.success
+                        height: 18
+                        radius: 9
+                        color: "#1E30D158"  // success 12% 底
 
                         Text {
                             id: attachText
                             anchors.centerIn: parent
                             text: "已连接"
-                            font.pixelSize: 10
-                            color: "white"
+                            font.pixelSize: Theme.fontMini
+                            color: Theme.success
                         }
                     }
                 }
@@ -120,7 +140,8 @@ Rectangle {
 
             // 操作按钮（幽灵图标风格，与插件卡片一致）
             RowLayout {
-                spacing: 4
+                spacing: 2
+                Layout.alignment: Qt.AlignVCenter
 
                 GhostButton {
                     icon: "doc"
@@ -144,7 +165,7 @@ Rectangle {
                 GhostButton {
                     icon: "close"
                     tip: "关闭会话"
-                    hoverColor: Qt.rgba(244/255, 67/255, 54/255, 0.15)
+                    hoverColor: "#26FF453A"
                     hoverIconColor: Theme.danger
                     onClicked: card.kill()
                 }
@@ -158,25 +179,27 @@ Rectangle {
         property string icon: ""
         property string tip: ""
         property color iconColor: Theme.textSecondary
-        property color hoverColor: Theme.surfaceHover
+        property color hoverColor: "#14FFFFFF"
         property color hoverIconColor: Theme.text
         signal clicked()
 
-        implicitWidth: 32
-        implicitHeight: 32
+        implicitWidth: 30
+        implicitHeight: 30
 
         Rectangle {
             anchors.fill: parent
-            radius: 6
+            radius: Theme.radiusSmall
             color: btnMa.containsMouse ? btn.hoverColor : "transparent"
-            Behavior on color { ColorAnimation { duration: 120 } }
+            Behavior on color { ColorAnimation { duration: Theme.animFast } }
         }
 
         AppIcon {
             anchors.centerIn: parent
+            width: 15
+            height: 15
             name: btn.icon
             iconColor: btnMa.containsMouse ? btn.hoverIconColor : btn.iconColor
-            Behavior on iconColor { ColorAnimation { duration: 120 } }
+            Behavior on iconColor { ColorAnimation { duration: Theme.animFast } }
         }
 
         MouseArea {
@@ -194,8 +217,11 @@ Rectangle {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 24
-        spacing: 16
+        anchors.leftMargin: 28
+        anchors.rightMargin: 28
+        anchors.topMargin: 24
+        anchors.bottomMargin: 20
+        spacing: 14
 
         // 标题栏
         RowLayout {
@@ -205,14 +231,14 @@ Rectangle {
             Text {
                 text: "终端会话"
                 font.pixelSize: Theme.fontTitle
-                font.bold: true
+                font.weight: Font.DemiBold
                 color: Theme.text
             }
 
             Text {
                 text: "(" + tmuxManager.sessions.length + ")"
                 font.pixelSize: Theme.fontNormal
-                color: Theme.textSecondary
+                color: Theme.textTertiary
             }
 
             Item { Layout.fillWidth: true }
@@ -234,9 +260,9 @@ Rectangle {
             Layout.fillWidth: true
             visible: !tmuxManager.available
             implicitHeight: warnText.implicitHeight + 24
-            radius: Theme.radius
-            color: Qt.rgba(255/255, 152/255, 0, 0.12)
-            border.color: Theme.warning
+            radius: Theme.radiusLarge
+            color: "#1EFF9F0A"  // warning 12% 底
+            border.color: "#4DFF9F0A"
             border.width: 1
 
             Text {
@@ -255,9 +281,9 @@ Rectangle {
             Layout.fillWidth: true
             visible: tmuxManager.available && tmuxManager.dshSession.length === 0
             implicitHeight: dshBannerRow.implicitHeight + 24
-            radius: Theme.radius
-            color: Qt.rgba(124/255, 77/255, 255/255, 0.12)
-            border.color: Theme.primary
+            radius: Theme.radiusLarge
+            color: Theme.primaryBg
+            border.color: "#3D5470FB"
             border.width: 1
 
             RowLayout {
@@ -288,7 +314,7 @@ Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
             model: tmuxManager.sessions
-            spacing: 12
+            spacing: 10
             clip: true
 
             delegate: SessionCard {

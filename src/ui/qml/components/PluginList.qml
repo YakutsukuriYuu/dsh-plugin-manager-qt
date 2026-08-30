@@ -5,7 +5,7 @@ import DshPluginManager
 
 Rectangle {
     id: root
-    color: Theme.background
+    color: Theme.window
 
     property var plugins: []
     property bool loading: false
@@ -61,8 +61,11 @@ Rectangle {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 24
-        spacing: 16
+        anchors.leftMargin: 28
+        anchors.rightMargin: 28
+        anchors.topMargin: 24
+        anchors.bottomMargin: 20
+        spacing: 14
 
         // 标题栏
         RowLayout {
@@ -72,7 +75,7 @@ Rectangle {
             Text {
                 text: "插件管理"
                 font.pixelSize: Theme.fontTitle
-                font.bold: true
+                font.weight: Font.DemiBold
                 color: Theme.text
             }
 
@@ -90,42 +93,54 @@ Rectangle {
             }
         }
 
-        // 分段筛选：全部 / 已启用
-        RowLayout {
-            spacing: 0
+        // 分段筛选（macOS 胶囊容器风格）：全部 / 已启用
+        Rectangle {
+            Layout.preferredWidth: segRow.implicitWidth + 6
+            Layout.preferredHeight: 34
+            radius: 8
+            color: Theme.field
+            border.color: Theme.separator
+            border.width: 1
 
-            Repeater {
-                model: [
-                    { "key": "all", "label": "全部 (" + root.plugins.length + ")" },
-                    { "key": "enabled", "label": "已启用 (" + root.enabledCount + ")" }
-                ]
+            RowLayout {
+                id: segRow
+                anchors.centerIn: parent
+                spacing: 2
 
-                delegate: Rectangle {
-                    width: segText.implicitWidth + 28
-                    height: 32
-                    radius: 6
-                    color: root.filterMode === modelData.key ? Theme.primary
-                         : segMa.containsMouse ? Theme.surfaceHover : Theme.surface
+                Repeater {
+                    model: [
+                        { "key": "all", "label": "全部  " + root.plugins.length },
+                        { "key": "enabled", "label": "已启用  " + root.enabledCount }
+                    ]
 
-                    Text {
-                        id: segText
-                        anchors.centerIn: parent
-                        text: modelData.label
-                        font.pixelSize: Theme.fontSmall
-                        color: root.filterMode === modelData.key ? "white" : Theme.textSecondary
-                    }
+                    delegate: Rectangle {
+                        Layout.preferredWidth: segText.implicitWidth + 24
+                        Layout.preferredHeight: 28
+                        radius: 6
+                        color: root.filterMode === modelData.key ? Theme.primary
+                             : segMa.containsMouse ? "#0AFFFFFF" : "transparent"
 
-                    MouseArea {
-                        id: segMa
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.filterMode = modelData.key
+                        Behavior on color { ColorAnimation { duration: Theme.animFast } }
+
+                        Text {
+                            id: segText
+                            anchors.centerIn: parent
+                            text: modelData.label
+                            font.pixelSize: Theme.fontSmall
+                            font.weight: root.filterMode === modelData.key ? Font.Medium : Font.Normal
+                            color: root.filterMode === modelData.key ? "white" : Theme.textSecondary
+                        }
+
+                        MouseArea {
+                            id: segMa
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.filterMode = modelData.key
+                        }
                     }
                 }
             }
-
-            Item { Layout.fillWidth: true }
         }
 
         // 搜索框
@@ -163,7 +178,7 @@ Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
             model: root.filteredPlugins
-            spacing: 12
+            spacing: 10
             clip: true
 
             delegate: PluginCard {
@@ -178,15 +193,35 @@ Rectangle {
             }
 
             // 空状态提示
-            Text {
+            ColumnLayout {
                 anchors.centerIn: parent
-                text: root.loading ? ""
-                    : root.plugins.length === 0 ? "当前 Profile 暂无插件"
-                    : root.filterMode === "enabled" && root.enabledCount === 0 ? "暂无已启用的插件"
-                    : "没有匹配的插件"
-                font.pixelSize: Theme.fontNormal
-                color: Theme.textSecondary
+                spacing: 10
                 visible: root.filteredPlugins.length === 0 && !root.loading
+
+                AppIcon {
+                    Layout.alignment: Qt.AlignHCenter
+                    width: 40
+                    height: 40
+                    name: "grid"
+                    iconColor: Theme.textTertiary
+                }
+
+                Text {
+                    Layout.alignment: Qt.AlignHCenter
+                    text: root.plugins.length === 0 ? "当前 Profile 暂无插件"
+                        : root.filterMode === "enabled" && root.enabledCount === 0 ? "暂无已启用的插件"
+                        : "没有匹配的插件"
+                    font.pixelSize: Theme.fontNormal
+                    color: Theme.textSecondary
+                }
+
+                Text {
+                    Layout.alignment: Qt.AlignHCenter
+                    visible: root.plugins.length === 0
+                    text: "点击右上角「安装插件」开始使用"
+                    font.pixelSize: Theme.fontSmall
+                    color: Theme.textTertiary
+                }
             }
         }
     }

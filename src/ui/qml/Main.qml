@@ -2,19 +2,23 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
 import QtQuick.Controls.Material 2.15
+import QtQuick.Effects
 import DshPluginManager
 
 ApplicationWindow {
     id: root
     visible: true
-    width: 1100
-    height: 750
-    minimumWidth: 800
-    minimumHeight: 500
+    width: 1120
+    height: 760
+    minimumWidth: 860
+    minimumHeight: 540
     title: "DSH 插件管理器"
+    color: Theme.window
 
     Material.theme: Material.Dark
-    Material.accent: Material.Purple
+    Material.accent: Theme.primary
+    Material.background: Theme.window
+    Material.foreground: Theme.text
 
     RowLayout {
         anchors.fill: parent
@@ -22,32 +26,80 @@ ApplicationWindow {
 
         // ===== 侧边栏 =====
         Rectangle {
-            Layout.preferredWidth: 230
+            Layout.preferredWidth: 236
             Layout.fillHeight: true
-            color: Theme.surface
+            color: Theme.sidebar
+
+            // 右侧 1px 分隔线
+            Rectangle {
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                width: 1
+                color: Theme.separator
+            }
 
             ColumnLayout {
                 anchors.fill: parent
-                anchors.margins: 16
-                spacing: 16
+                anchors.leftMargin: 14
+                anchors.rightMargin: 14
+                anchors.topMargin: 18
+                anchors.bottomMargin: 14
+                spacing: 6
 
-                Text {
-                    text: "DSH 插件管理器"
-                    font.pixelSize: Theme.fontLarge
-                    font.bold: true
-                    color: Theme.text
-                    Layout.alignment: Qt.AlignHCenter
+                // Logo + 标题
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.bottomMargin: 10
+                    spacing: 10
+
+                    // 应用图标（圆角裁切）
+                    Rectangle {
+                        Layout.preferredWidth: 34
+                        Layout.preferredHeight: 34
+                        radius: 8
+                        clip: true
+
+                        Image {
+                            anchors.fill: parent
+                            source: "qrc:/images/logo.png"
+                            sourceSize: Qt.size(68, 68)
+                            fillMode: Image.PreserveAspectCrop
+                        }
+                    }
+
+                    ColumnLayout {
+                        spacing: 1
+
+                        Text {
+                            text: "DSH 插件管理"
+                            font.pixelSize: 14
+                            font.weight: Font.DemiBold
+                            color: Theme.text
+                        }
+
+                        Text {
+                            text: "DeepSeek Harness"
+                            font.pixelSize: Theme.fontMini
+                            color: Theme.textTertiary
+                        }
+                    }
                 }
 
+                // Profile 区块
                 Text {
-                    text: "Profile"
-                    font.pixelSize: Theme.fontSmall
-                    color: Theme.textSecondary
+                    text: "PROFILE"
+                    font.pixelSize: Theme.fontMini
+                    font.weight: Font.Medium
+                    font.letterSpacing: 0.8
+                    color: Theme.textTertiary
+                    Layout.leftMargin: 6
                 }
 
                 ComboBox {
                     id: profileCombo
                     Layout.fillWidth: true
+                    Layout.bottomMargin: 12
                     model: pluginManager.profiles
 
                     Component.onCompleted: {
@@ -60,46 +112,74 @@ ApplicationWindow {
                     }
                 }
 
-                // 导航菜单
+                // 导航菜单（macOS 胶囊式选中）
                 ListView {
                     id: navList
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    spacing: 4
+                    spacing: 2
                     currentIndex: 0
+                    clip: true
 
                     model: [
-                        { "name": "插件管理", "icon": "☰" },
-                        { "name": "终端会话", "icon": ">_" },
-                        { "name": "设置", "icon": "⚙" }
+                        { "name": "插件管理", "icon": "grid" },
+                        { "name": "终端会话", "icon": "terminal" },
+                        { "name": "设置", "icon": "gear" }
                     ]
 
-                    delegate: ItemDelegate {
+                    delegate: Rectangle {
+                        id: navItem
                         width: navList.width
-                        height: 44
-                        highlighted: navList.currentIndex === index
+                        height: 36
+                        radius: 7
+                        color: navList.currentIndex === index
+                               ? (navMa.pressed ? Theme.primaryDim : Theme.primary)
+                               : navMa.containsMouse ? "#10FFFFFF" : "transparent"
 
-                        contentItem: RowLayout {
-                            spacing: 12
+                        Behavior on color { ColorAnimation { duration: Theme.animFast } }
 
-                            Text {
-                                text: modelData.icon
-                                font.pixelSize: 16
-                                color: Theme.text
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 10
+                            spacing: 10
+
+                            AppIcon {
+                                width: 16
+                                height: 16
+                                name: modelData.icon
+                                iconColor: navList.currentIndex === index
+                                           ? "#FFFFFF" : Theme.textSecondary
                             }
 
                             Text {
                                 text: modelData.name
                                 font.pixelSize: Theme.fontNormal
-                                color: Theme.text
+                                font.weight: navList.currentIndex === index
+                                             ? Font.Medium : Font.Normal
+                                color: navList.currentIndex === index
+                                       ? "#FFFFFF" : Theme.textSecondary
                             }
                         }
 
-                        onClicked: {
-                            navList.currentIndex = index
-                            stackLayout.currentIndex = index
+                        MouseArea {
+                            id: navMa
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                navList.currentIndex = index
+                                stackLayout.currentIndex = index
+                            }
                         }
                     }
+                }
+
+                // 底部版本号
+                Text {
+                    text: "v0.1.0 · Qt 6"
+                    font.pixelSize: Theme.fontMini
+                    color: Theme.textTertiary
+                    Layout.alignment: Qt.AlignHCenter
                 }
             }
         }
@@ -110,7 +190,7 @@ ApplicationWindow {
             Layout.fillWidth: true
             Layout.fillHeight: true
 
-            // 插件管理（合并「全部」与「已启用」，页内分段筛选）
+            // 插件管理（页内分段筛选：全部 / 已启用）
             PluginList {
                 plugins: pluginManager.plugins
                 loading: pluginManager.loading
@@ -127,74 +207,122 @@ ApplicationWindow {
 
             // 设置页面
             Rectangle {
-                color: Theme.background
+                color: Theme.window
 
                 ColumnLayout {
                     anchors.fill: parent
-                    anchors.margins: 32
-                    spacing: 20
+                    anchors.leftMargin: 32
+                    anchors.rightMargin: 32
+                    anchors.topMargin: 24
+                    spacing: 18
 
                     Text {
                         text: "设置"
                         font.pixelSize: Theme.fontTitle
-                        font.bold: true
+                        font.weight: Font.DemiBold
                         color: Theme.text
                     }
 
-                    GridLayout {
-                        columns: 2
-                        columnSpacing: 16
-                        rowSpacing: 12
+                    // 信息卡片
+                    Rectangle {
                         Layout.fillWidth: true
+                        implicitHeight: infoColumn.implicitHeight + 32
+                        radius: Theme.radiusLarge
+                        color: Theme.card
+                        border.color: Theme.cardBorder
+                        border.width: 1
 
-                        Text { text: "DSH 目录:"; color: Theme.textSecondary; font.pixelSize: Theme.fontNormal }
-                        Text { text: pluginManager.dshHome; color: Theme.text; font.pixelSize: Theme.fontNormal }
+                        ColumnLayout {
+                            id: infoColumn
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.margins: 16
+                            spacing: 10
 
-                        Text { text: "当前 Profile:"; color: Theme.textSecondary; font.pixelSize: Theme.fontNormal }
-                        Text { text: pluginManager.currentProfile; color: Theme.text; font.pixelSize: Theme.fontNormal }
-                    }
+                            Text {
+                                text: "环境信息"
+                                font.pixelSize: Theme.fontHeadline
+                                font.weight: Font.DemiBold
+                                color: Theme.text
+                            }
 
-                    // dsh 可执行文件路径（可自定义，留空保存 = 恢复自动检测）
-                    Text {
-                        text: "dsh 命令路径:"
-                        color: Theme.textSecondary
-                        font.pixelSize: Theme.fontNormal
-                    }
+                            GridLayout {
+                                columns: 2
+                                columnSpacing: 16
+                                rowSpacing: 8
+                                Layout.fillWidth: true
 
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
+                                Text { text: "DSH 目录"; color: Theme.textSecondary; font.pixelSize: Theme.fontNormal }
+                                Text { text: pluginManager.dshHome; color: Theme.text; font.pixelSize: Theme.fontNormal; font.family: "Menlo" }
 
-                        TextField {
-                            id: dshPathField
-                            Layout.fillWidth: true
-                            text: pluginManager.dshExecutable
-                            placeholderText: "留空则自动检测（$PATH / homebrew / npx 缓存）"
-                            selectByMouse: true
-                        }
-
-                        Button {
-                            text: "保存"
-                            highlighted: true
-                            enabled: dshPathField.text.trim() !== pluginManager.dshExecutable
-                            onClicked: pluginManager.setDshExecutable(dshPathField.text)
-                        }
-
-                        Button {
-                            text: "自动检测"
-                            onClicked: {
-                                dshPathField.text = ""
-                                pluginManager.setDshExecutable("")
+                                Text { text: "当前 Profile"; color: Theme.textSecondary; font.pixelSize: Theme.fontNormal }
+                                Text { text: pluginManager.currentProfile; color: Theme.text; font.pixelSize: Theme.fontNormal }
                             }
                         }
                     }
 
-                    Text {
-                        text: "当前生效: " + (pluginManager.dshExecutable || "未找到 dsh")
-                        color: pluginManager.dshExecutable ? Theme.textSecondary : Theme.danger
-                        font.pixelSize: Theme.fontSmall
-                        wrapMode: Text.WrapAnywhere
+                    // dsh 路径卡片
+                    Rectangle {
                         Layout.fillWidth: true
+                        implicitHeight: dshColumn.implicitHeight + 32
+                        radius: Theme.radiusLarge
+                        color: Theme.card
+                        border.color: Theme.cardBorder
+                        border.width: 1
+
+                        ColumnLayout {
+                            id: dshColumn
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.margins: 16
+                            spacing: 10
+
+                            Text {
+                                text: "dsh 命令路径"
+                                font.pixelSize: Theme.fontHeadline
+                                font.weight: Font.DemiBold
+                                color: Theme.text
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+
+                                TextField {
+                                    id: dshPathField
+                                    Layout.fillWidth: true
+                                    text: pluginManager.dshExecutable
+                                    placeholderText: "留空则自动检测（$PATH / homebrew / npx 缓存）"
+                                    selectByMouse: true
+                                }
+
+                                Button {
+                                    text: "保存"
+                                    highlighted: true
+                                    enabled: dshPathField.text.trim() !== pluginManager.dshExecutable
+                                    onClicked: pluginManager.setDshExecutable(dshPathField.text)
+                                }
+
+                                Button {
+                                    text: "自动检测"
+                                    onClicked: {
+                                        dshPathField.text = ""
+                                        pluginManager.setDshExecutable("")
+                                    }
+                                }
+                            }
+
+                            Text {
+                                text: "当前生效: " + (pluginManager.dshExecutable || "未找到 dsh")
+                                color: pluginManager.dshExecutable ? Theme.textSecondary : Theme.danger
+                                font.pixelSize: Theme.fontSmall
+                                font.family: "Menlo"
+                                wrapMode: Text.WrapAnywhere
+                                Layout.fillWidth: true
+                            }
+                        }
                     }
 
                     Button {
@@ -203,25 +331,35 @@ ApplicationWindow {
                     }
 
                     Text {
-                        text: "最近命令输出:"
+                        text: "最近命令输出"
                         color: Theme.textSecondary
                         font.pixelSize: Theme.fontNormal
                         visible: pluginManager.lastOutput.length > 0
                     }
 
-                    ScrollView {
+                    // 输出日志卡片
+                    Rectangle {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         visible: pluginManager.lastOutput.length > 0
-                        clip: true
+                        radius: Theme.radiusLarge
+                        color: Theme.field
+                        border.color: Theme.cardBorder
+                        border.width: 1
 
-                        Text {
-                            text: pluginManager.lastOutput
-                            color: Theme.textSecondary
-                            font.pixelSize: Theme.fontSmall
-                            font.family: "Menlo"
-                            wrapMode: Text.WrapAnywhere
-                            width: parent ? parent.width : 0
+                        ScrollView {
+                            anchors.fill: parent
+                            anchors.margins: 12
+                            clip: true
+
+                            Text {
+                                text: pluginManager.lastOutput
+                                color: Theme.textSecondary
+                                font.pixelSize: Theme.fontSmall
+                                font.family: "Menlo"
+                                wrapMode: Text.WrapAnywhere
+                                width: parent.width
+                            }
                         }
                     }
 

@@ -1,43 +1,56 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
+import QtQuick.Effects
 import DshPluginManager
 
 Rectangle {
     id: root
-    height: 110
-    radius: Theme.radius
-    color: mouseArea.containsMouse ? Theme.surfaceHover : Theme.surface
-    border.color: mouseArea.containsMouse ? Theme.primary : "transparent"
+    height: 104
+    radius: Theme.radiusLarge
+    color: mouseArea.containsMouse ? Theme.cardHover : Theme.card
+    border.color: mouseArea.containsMouse ? "#3D5470FB" : Theme.cardBorder
     border.width: 1
+
+    Behavior on color { ColorAnimation { duration: Theme.animFast } }
+    Behavior on border.color { ColorAnimation { duration: Theme.animFast } }
+
+    // 柔和投影（悬停加深）
+    layer.enabled: true
+    layer.effect: MultiEffect {
+        shadowEnabled: true
+        shadowBlur: Theme.shadowBlur
+        shadowColor: mouseArea.containsMouse ? Theme.shadowHoverColor : Theme.shadowColor
+        shadowVerticalOffset: mouseArea.containsMouse ? Theme.shadowHoverYOff : Theme.shadowYOff
+        Behavior on shadowColor { ColorAnimation { duration: Theme.animNormal } }
+        Behavior on shadowVerticalOffset { NumberAnimation { duration: Theme.animNormal } }
+    }
 
     property var plugin: null
 
-    // 子依赖插件显示为半透明，弱化视觉效果
-    opacity: root.plugin && root.plugin.direct === false ? 0.65 : 1.0
+    // 子依赖插件弱化
+    opacity: root.plugin && root.plugin.direct === false ? 0.6 : 1.0
 
     signal uninstallRequested()
     signal toggleRequested(bool enabled)
     signal openDirectory()
 
-    // ===== 内联组件：启用/禁用开关（带滑动动画）=====
+    // ===== 启用/禁用开关 =====
     component CardSwitch: Item {
         id: switchRoot
         property bool checked: false
         signal toggled(bool checked)
 
-        implicitWidth: 44
+        implicitWidth: 42
         implicitHeight: 24
 
-        // 轨道
         Rectangle {
             anchors.fill: parent
             radius: height / 2
-            color: switchRoot.checked ? Theme.success : "#555555"
-            Behavior on color { ColorAnimation { duration: 150 } }
+            color: switchRoot.checked ? Theme.success : "#48484C"
+            Behavior on color { ColorAnimation { duration: Theme.animNormal } }
         }
 
-        // 滑块
         Rectangle {
             width: 18
             height: 18
@@ -45,7 +58,7 @@ Rectangle {
             y: 3
             x: switchRoot.checked ? switchRoot.width - width - 3 : 3
             color: "white"
-            Behavior on x { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+            Behavior on x { NumberAnimation { duration: Theme.animNormal; easing.type: Easing.OutCubic } }
         }
 
         MouseArea {
@@ -61,31 +74,33 @@ Rectangle {
         ToolTip.delay: 600
     }
 
-    // ===== 内联组件：幽灵图标按钮（矢量线条图标，悬停显现背景）=====
+    // ===== 幽灵图标按钮 =====
     component IconButton: Item {
         id: iconRoot
         property string icon: ""
         property string tip: ""
         property color iconColor: Theme.textSecondary
-        property color hoverColor: Theme.surfaceHover
+        property color hoverColor: "#14FFFFFF"
         property color hoverIconColor: Theme.text
         signal clicked()
 
-        implicitWidth: 32
-        implicitHeight: 32
+        implicitWidth: 30
+        implicitHeight: 30
 
         Rectangle {
             anchors.fill: parent
-            radius: 6
+            radius: Theme.radiusSmall
             color: iconMa.containsMouse ? iconRoot.hoverColor : "transparent"
-            Behavior on color { ColorAnimation { duration: 120 } }
+            Behavior on color { ColorAnimation { duration: Theme.animFast } }
         }
 
         AppIcon {
             anchors.centerIn: parent
+            width: 15
+            height: 15
             name: iconRoot.icon
             iconColor: iconMa.containsMouse ? iconRoot.hoverIconColor : iconRoot.iconColor
-            Behavior on iconColor { ColorAnimation { duration: 120 } }
+            Behavior on iconColor { ColorAnimation { duration: Theme.animFast } }
         }
 
         MouseArea {
@@ -110,46 +125,51 @@ Rectangle {
 
     RowLayout {
         anchors.fill: parent
-        anchors.margins: 14
+        anchors.leftMargin: 16
+        anchors.rightMargin: 16
+        anchors.topMargin: 12
+        anchors.bottomMargin: 12
         spacing: 14
 
-        // 插件图标（首字母）
+        // 插件首字母图标
         Rectangle {
-            Layout.preferredWidth: 56
-            Layout.preferredHeight: 56
-            radius: Theme.radius
-            color: Theme.primary
+            Layout.preferredWidth: 48
+            Layout.preferredHeight: 48
+            Layout.alignment: Qt.AlignVCenter
+            radius: 10
+            color: Theme.primaryBg
 
             Text {
                 anchors.centerIn: parent
                 text: root.plugin && root.plugin.name ? root.plugin.name.replace(/^@[^/]+\//, "").charAt(0).toUpperCase() : "?"
-                font.pixelSize: 22
-                font.bold: true
-                color: "white"
+                font.pixelSize: 20
+                font.weight: Font.DemiBold
+                color: Theme.primaryHover
             }
         }
 
         // 插件信息
         ColumnLayout {
             Layout.fillWidth: true
-            spacing: 3
+            Layout.alignment: Qt.AlignVCenter
+            spacing: 2
 
             RowLayout {
                 spacing: 8
 
                 Text {
                     text: root.plugin ? root.plugin.name : ""
-                    font.pixelSize: Theme.fontNormal
-                    font.bold: true
+                    font.pixelSize: Theme.fontHeadline
+                    font.weight: Font.DemiBold
                     color: Theme.text
                     elide: Text.ElideRight
-                    Layout.maximumWidth: 400
+                    Layout.maximumWidth: 420
                 }
 
                 Text {
                     text: root.plugin ? "v" + root.plugin.version : ""
                     font.pixelSize: Theme.fontSmall
-                    color: Theme.textSecondary
+                    color: Theme.textTertiary
                 }
             }
 
@@ -164,24 +184,24 @@ Rectangle {
             }
 
             RowLayout {
-                spacing: 8
+                spacing: 6
 
                 // 子依赖标签
                 Rectangle {
                     visible: root.plugin && root.plugin.direct === false
                     width: depText.implicitWidth + 12
-                    height: 20
-                    radius: 4
+                    height: 18
+                    radius: 9
                     color: "transparent"
-                    border.color: Theme.textSecondary
+                    border.color: Theme.textTertiary
                     border.width: 1
 
                     Text {
                         id: depText
                         anchors.centerIn: parent
                         text: "子依赖"
-                        font.pixelSize: 10
-                        color: Theme.textSecondary
+                        font.pixelSize: Theme.fontMini
+                        color: Theme.textTertiary
                     }
                 }
 
@@ -189,42 +209,45 @@ Rectangle {
                 Rectangle {
                     visible: root.plugin && root.plugin.hasBundlePatch
                     width: bundleText.implicitWidth + 12
-                    height: 20
-                    radius: 4
-                    color: Theme.info
+                    height: 18
+                    radius: 9
+                    color: Theme.primaryBg
 
                     Text {
                         id: bundleText
                         anchors.centerIn: parent
                         text: "Bundle"
-                        font.pixelSize: 10
-                        color: "white"
+                        font.pixelSize: Theme.fontMini
+                        color: Theme.primaryHover
                     }
                 }
             }
         }
 
-        // ===== 操作区：开关 + 图标按钮 =====
+        // ===== 操作区 =====
         ColumnLayout {
-            spacing: 6
+            spacing: 4
             Layout.alignment: Qt.AlignVCenter
 
-            CardSwitch {
+            RowLayout {
                 Layout.alignment: Qt.AlignHCenter
-                checked: root.plugin ? root.plugin.enabled : false
-                onToggled: function (c) { root.toggleRequested(c) }
-            }
+                spacing: 8
 
-            Text {
-                Layout.alignment: Qt.AlignHCenter
-                text: root.plugin && root.plugin.enabled ? "已启用" : "已禁用"
-                font.pixelSize: 10
-                color: root.plugin && root.plugin.enabled ? Theme.success : Theme.textSecondary
+                Text {
+                    text: root.plugin && root.plugin.enabled ? "已启用" : "已禁用"
+                    font.pixelSize: Theme.fontMini
+                    color: root.plugin && root.plugin.enabled ? Theme.success : Theme.textTertiary
+                }
+
+                CardSwitch {
+                    checked: root.plugin ? root.plugin.enabled : false
+                    onToggled: function (c) { root.toggleRequested(c) }
+                }
             }
 
             RowLayout {
                 Layout.alignment: Qt.AlignHCenter
-                spacing: 4
+                spacing: 2
 
                 IconButton {
                     icon: "folder"
@@ -235,7 +258,7 @@ Rectangle {
                 IconButton {
                     icon: "trash"
                     tip: "卸载插件"
-                    hoverColor: Qt.rgba(244/255, 67/255, 54/255, 0.15)
+                    hoverColor: "#26FF453A"
                     hoverIconColor: Theme.danger
                     onClicked: root.uninstallRequested()
                 }
