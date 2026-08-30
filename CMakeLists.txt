@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(dsh-plugin-manager VERSION 0.1.0 LANGUAGES CXX)
+project(dsh-plugin-manager VERSION 0.1.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -98,6 +98,8 @@ set_target_properties(dsh-plugin-manager PROPERTIES
     MACOSX_BUNDLE_BUNDLE_NAME "DSH Plugin Manager"
     MACOSX_BUNDLE_ICON_FILE "AppIcon.icns"
     MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/cmake/Info.plist.in"
+    MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
+    MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
 )
 
 install(TARGETS dsh-plugin-manager
