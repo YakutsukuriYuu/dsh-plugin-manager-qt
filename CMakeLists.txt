@@ -36,6 +36,14 @@ set_source_files_properties(${APP_ICON_MACOS} PROPERTIES
     MACOSX_PACKAGE_LOCATION "Resources")
 target_sources(dsh-plugin-manager PRIVATE ${APP_ICON_MACOS})
 
+# Liquid Glass 图标（.icon 的 actool 预编译产物，随仓库提交，
+# CI 无需 Xcode 26+；本地如需修改图标，用 Icon Composer 编辑
+# resources/AppIcon.icon 后重新编译替换 Assets.car）
+set(APP_ASSETS_CAR "${CMAKE_CURRENT_SOURCE_DIR}/resources/Assets.car")
+set_source_files_properties(${APP_ASSETS_CAR} PROPERTIES
+    MACOSX_PACKAGE_LOCATION "Resources")
+target_sources(dsh-plugin-manager PRIVATE ${APP_ASSETS_CAR})
+
 # Theme.qml 是单例
 set_source_files_properties(src/ui/qml/Theme.qml
     PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
@@ -64,6 +72,7 @@ set_target_properties(dsh-plugin-manager PROPERTIES
     MACOSX_BUNDLE_GUI_IDENTIFIER "com.dsh.plugin-manager"
     MACOSX_BUNDLE_BUNDLE_NAME "DSH Plugin Manager"
     MACOSX_BUNDLE_ICON_FILE "AppIcon.icns"
+    MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/cmake/Info.plist.in"
 )
 
 install(TARGETS dsh-plugin-manager
