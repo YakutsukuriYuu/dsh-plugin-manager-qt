@@ -215,8 +215,13 @@ void SyncManager::startSync(const QStringList &pluginNames)
             }
             postLog("  ✓ 文件已上传");
 
-            // 3) 更新远程 package.json：dependencies + bundles（本地为主）
-            {
+            // 3) 只有用户「明确勾选」的插件才写入远程 dependencies；
+            //    闭包自动带上的子依赖只传文件，不注册——否则远程面板
+            //    会把子依赖全显示出来（direct 判定基于 dependencies）。
+            const bool isExplicit = pluginNames.contains(name);
+            if (!isExplicit) {
+                postLog("  · 子依赖，仅传文件");
+            } else {
                 const QString content = remote->readFile(remotePkgPath);
                 QJsonObject root = QJsonDocument::fromJson(content.toUtf8()).object();
 
