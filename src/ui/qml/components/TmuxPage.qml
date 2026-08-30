@@ -199,7 +199,6 @@ Rectangle {
             height: 15
             name: btn.icon
             iconColor: btnMa.containsMouse ? btn.hoverIconColor : btn.iconColor
-            Behavior on iconColor { ColorAnimation { duration: Theme.animFast } }
         }
 
         MouseArea {
@@ -244,14 +243,31 @@ Rectangle {
             Item { Layout.fillWidth: true }
 
             Button {
-                text: "⟳ 刷新"
+                flat: true
                 onClicked: tmuxManager.refresh()
+
+                contentItem: RowLayout {
+                    spacing: 6
+                    AppIcon {
+                        name: "refresh"; width: 14; height: 14
+                        iconColor: Theme.textSecondary
+                    }
+                    Text { text: "刷新"; font.pixelSize: Theme.fontNormal; color: Theme.textSecondary }
+                }
             }
 
             Button {
-                text: "＋ 新建会话"
                 highlighted: true
                 onClicked: newSessionDialog.open()
+
+                contentItem: RowLayout {
+                    spacing: 6
+                    AppIcon {
+                        name: "plus"; width: 14; height: 14
+                        iconColor: "white"
+                    }
+                    Text { text: "新建会话"; font.pixelSize: Theme.fontNormal; color: "white" }
+                }
             }
         }
 
@@ -300,11 +316,19 @@ Rectangle {
                 }
 
                 Button {
-                    text: "▶ 启动 DSH"
                     highlighted: true
                     onClicked: tmuxManager.createSession(
                                    "harness", "dsh web",
                                    pluginManager.dshHome + "/profiles/web")
+
+                    contentItem: RowLayout {
+                        spacing: 6
+                        AppIcon {
+                            name: "play"; width: 14; height: 14
+                            iconColor: "white"
+                        }
+                        Text { text: "启动 DSH"; font.pixelSize: Theme.fontNormal; color: "white" }
+                    }
                 }
             }
         }

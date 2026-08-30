@@ -17,6 +17,7 @@ find_package(Qt6 REQUIRED COMPONENTS
     Quick
     QuickControls2
     Widgets
+    Svg
 )
 
 qt_policy(SET QTP0001 NEW)
@@ -64,6 +65,7 @@ target_link_libraries(dsh-plugin-manager PRIVATE
     Qt6::Quick
     Qt6::QuickControls2
     Qt6::Widgets
+    Qt6::Svg
 )
 
 # 界面图片资源（侧边栏 Logo）
@@ -71,6 +73,14 @@ qt_add_resources(dsh-plugin-manager "images"
     PREFIX "/images"
     BASE "resources"
     FILES resources/logo.png
+)
+
+# Lucide 图标资源（tools/make_icons.py 预烘焙的着色变体）
+include(resources/icons/icons.cmake)
+qt_add_resources(dsh-plugin-manager "icons"
+    PREFIX "/icons"
+    BASE "resources/icons"
+    FILES ${ICON_FILES}
 )
 
 set_target_properties(dsh-plugin-manager PROPERTIES

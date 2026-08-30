@@ -81,15 +81,33 @@ Rectangle {
 
             Item { Layout.fillWidth: true }
 
+            // 带图标的按钮
             Button {
-                text: "⟳ 刷新"
+                flat: true
                 onClicked: root.refresh()
+
+                contentItem: RowLayout {
+                    spacing: 6
+                    AppIcon {
+                        name: "refresh"; width: 14; height: 14
+                        iconColor: Theme.textSecondary
+                    }
+                    Text { text: "刷新"; font.pixelSize: Theme.fontNormal; color: Theme.textSecondary }
+                }
             }
 
             Button {
-                text: "＋ 安装插件"
                 highlighted: true
                 onClicked: root.installRequested()
+
+                contentItem: RowLayout {
+                    spacing: 6
+                    AppIcon {
+                        name: "plus"; width: 14; height: 14
+                        iconColor: "white"
+                    }
+                    Text { text: "安装插件"; font.pixelSize: Theme.fontNormal; color: "white" }
+                }
             }
         }
 

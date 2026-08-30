@@ -100,7 +100,6 @@ Rectangle {
             height: 15
             name: iconRoot.icon
             iconColor: iconMa.containsMouse ? iconRoot.hoverIconColor : iconRoot.iconColor
-            Behavior on iconColor { ColorAnimation { duration: Theme.animFast } }
         }
 
         MouseArea {

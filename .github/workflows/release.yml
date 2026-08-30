@@ -20,7 +20,7 @@ jobs:
       - name: 安装 Qt 6
         uses: jurplel/install-qt-action@v4
         with:
-          version: '6.8.*'
+          version: '6.8.*'    # 图标为预烘焙着色 SVG，无需 6.10 的 currentColor
           arch: 'clang_64'
           modules: ''
 
