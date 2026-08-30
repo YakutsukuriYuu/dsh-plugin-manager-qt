@@ -18,6 +18,7 @@ Rectangle {
         property var server: null
 
         signal connectRequested()
+        signal editRequested()
         signal removeRequested()
 
         height: 76
@@ -110,6 +111,39 @@ Rectangle {
                             color: "white"
                         }
                     }
+                }
+
+                // 编辑按钮
+                Item {
+                    implicitWidth: 30
+                    implicitHeight: 30
+
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: Theme.radiusSmall
+                        color: editMa.containsMouse ? "#14FFFFFF" : "transparent"
+                        Behavior on color { ColorAnimation { duration: Theme.animFast } }
+                    }
+
+                    AppIcon {
+                        anchors.centerIn: parent
+                        width: 15
+                        height: 15
+                        name: "pencil"
+                        iconColor: editMa.containsMouse ? Theme.text : Theme.textSecondary
+                    }
+
+                    MouseArea {
+                        id: editMa
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: card.editRequested()
+                    }
+
+                    ToolTip.visible: editMa.containsMouse
+                    ToolTip.text: "编辑服务器"
+                    ToolTip.delay: 600
                 }
 
                 // 删除按钮
@@ -260,6 +294,7 @@ Rectangle {
                 width: ListView.view.width
                 server: modelData
                 onConnectRequested: remoteManager.connectToServer(modelData.name)
+                onEditRequested: editDialog.ask(modelData.name, modelData.target)
                 onRemoveRequested: remoteManager.removeServer(modelData.name)
             }
 
@@ -332,6 +367,49 @@ Rectangle {
         onRejected: {
             serverNameField.text = ""
             serverTargetField.text = ""
+        }
+    }
+
+    // ===== 编辑服务器对话框 =====
+    Dialog {
+        id: editDialog
+        title: "编辑服务器"
+        modal: true
+        anchors.centerIn: parent
+        width: 420
+        standardButtons: Dialog.Ok | Dialog.Cancel
+
+        property string originalName: ""
+
+        function ask(name, target) {
+            originalName = name
+            editNameField.text = name
+            editTargetField.text = target
+            open()
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 12
+
+            Text { text: "备注名:"; color: Theme.text; font.pixelSize: Theme.fontNormal }
+            TextField {
+                id: editNameField
+                Layout.fillWidth: true
+            }
+
+            Text { text: "SSH 地址:"; color: Theme.text; font.pixelSize: Theme.fontNormal }
+            TextField {
+                id: editTargetField
+                Layout.fillWidth: true
+                placeholderText: "user@192.168.1.100 或 ssh config 别名"
+            }
+        }
+
+        onOpened: editNameField.forceActiveFocus()
+
+        onAccepted: {
+            remoteManager.editServer(editDialog.originalName,
+                                     editNameField.text, editTargetField.text)
         }
     }
 

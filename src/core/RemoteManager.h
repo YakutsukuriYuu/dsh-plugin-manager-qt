@@ -28,6 +28,7 @@ public:
     bool connecting() const { return m_connecting; }
 
     Q_INVOKABLE void addServer(const QString &name, const QString &target);
+    Q_INVOKABLE void editServer(const QString &name, const QString &newName, const QString &newTarget);
     Q_INVOKABLE void removeServer(const QString &name);
     Q_INVOKABLE void connectToServer(const QString &name);
     Q_INVOKABLE void disconnectRemote();

@@ -62,6 +62,39 @@ void RemoteManager::addServer(const QString &name, const QString &target)
     emit operationSucceeded("已添加服务器: " + n);
 }
 
+void RemoteManager::editServer(const QString &name, const QString &newName, const QString &newTarget)
+{
+    const QString n = newName.trimmed();
+    const QString t = newTarget.trimmed();
+    if (n.isEmpty() || t.isEmpty()) {
+        emit errorOccurred("服务器名称和地址不能为空");
+        return;
+    }
+
+    for (int i = 0; i < m_servers.size(); ++i) {
+        if (m_servers[i].toMap().value("name").toString() == name) {
+            // 改名时检查新名字是否与其他服务器冲突
+            if (n != name) {
+                for (const QVariant &v : m_servers) {
+                    if (v.toMap().value("name").toString() == n) {
+                        emit errorOccurred("服务器名称已存在: " + n);
+                        return;
+                    }
+                }
+            }
+            QVariantMap server;
+            server["name"] = n;
+            server["target"] = t;
+            m_servers[i] = server;
+            saveServers();
+            emit serversChanged();
+            emit operationSucceeded("已保存服务器: " + n);
+            return;
+        }
+    }
+    emit errorOccurred("找不到服务器: " + name);
+}
+
 void RemoteManager::removeServer(const QString &name)
 {
     for (int i = 0; i < m_servers.size(); ++i) {

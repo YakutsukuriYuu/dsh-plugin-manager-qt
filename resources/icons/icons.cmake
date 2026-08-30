@@ -42,6 +42,12 @@ set(ICON_FILES
     resources/icons/local_white.svg
     resources/icons/local_danger.svg
     resources/icons/local_blue.svg
+    resources/icons/pencil_secondary.svg
+    resources/icons/pencil_primary.svg
+    resources/icons/pencil_tertiary.svg
+    resources/icons/pencil_white.svg
+    resources/icons/pencil_danger.svg
+    resources/icons/pencil_blue.svg
     resources/icons/play_secondary.svg
     resources/icons/play_primary.svg
     resources/icons/play_tertiary.svg
