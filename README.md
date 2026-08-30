@@ -21,8 +21,8 @@
 推送 tag 即可触发 GitHub Actions 自动编译并发布：
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.1.2
+git push origin v0.1.2
 ```
 
 ## ✨ 功能
