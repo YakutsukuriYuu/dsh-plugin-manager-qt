@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(dsh-plugin-manager VERSION 1.0.0 LANGUAGES CXX)
+project(dsh-plugin-manager VERSION 0.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -18,6 +18,7 @@ find_package(Qt6 REQUIRED COMPONENTS
     QuickControls2
     Widgets
     Svg
+    Network
 )
 
 qt_policy(SET QTP0001 NEW)
@@ -27,9 +28,15 @@ set(SOURCES
     src/main.cpp
     src/core/PluginManager.cpp
     src/core/TmuxManager.cpp
+    src/core/UpdateChecker.cpp
 )
 
 qt_add_executable(dsh-plugin-manager ${SOURCES})
+
+# 应用版本号传入代码（QCoreApplication::applicationVersion）
+target_compile_definitions(dsh-plugin-manager PRIVATE
+    APP_VERSION="${PROJECT_VERSION}"
+)
 
 # macOS 应用图标（打进 .app 包的 Resources 目录）
 set(APP_ICON_MACOS "${CMAKE_CURRENT_SOURCE_DIR}/resources/AppIcon.icns")
@@ -66,6 +73,7 @@ target_link_libraries(dsh-plugin-manager PRIVATE
     Qt6::QuickControls2
     Qt6::Widgets
     Qt6::Svg
+    Qt6::Network
 )
 
 # 界面图片资源（侧边栏 Logo）

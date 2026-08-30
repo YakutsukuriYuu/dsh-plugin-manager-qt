@@ -159,6 +159,15 @@ ApplicationWindow {
                                 color: navList.currentIndex === index
                                        ? "#FFFFFF" : Theme.textSecondary
                             }
+
+                            // 有可用更新时，在「设置」项上显示红点
+                            Rectangle {
+                                visible: modelData.icon === "gear" && updateChecker.updateAvailable
+                                Layout.preferredWidth: 7
+                                Layout.preferredHeight: 7
+                                radius: 4
+                                color: Theme.danger
+                            }
                         }
 
                         MouseArea {
@@ -176,7 +185,7 @@ ApplicationWindow {
 
                 // 底部版本号
                 Text {
-                    text: "v0.1.0 · Qt 6"
+                    text: "v" + Qt.application.version + " · Qt 6"
                     font.pixelSize: Theme.fontMini
                     color: Theme.textTertiary
                     Layout.alignment: Qt.AlignHCenter
@@ -321,6 +330,132 @@ ApplicationWindow {
                                 font.family: "Menlo"
                                 wrapMode: Text.WrapAnywhere
                                 Layout.fillWidth: true
+                            }
+                        }
+                    }
+
+                    // 版本更新卡片
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: updateColumn.implicitHeight + 32
+                        radius: Theme.radiusLarge
+                        color: Theme.card
+                        border.color: updateChecker.updateAvailable ? "#3D5470FB" : Theme.cardBorder
+                        border.width: 1
+
+                        ColumnLayout {
+                            id: updateColumn
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.margins: 16
+                            spacing: 10
+
+                            Text {
+                                text: "版本更新"
+                                font.pixelSize: Theme.fontHeadline
+                                font.weight: Font.DemiBold
+                                color: Theme.text
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 12
+
+                                Text {
+                                    text: "当前版本  v" + updateChecker.currentVersion
+                                    color: Theme.textSecondary
+                                    font.pixelSize: Theme.fontNormal
+                                }
+
+                                // 有新版本时的徽章
+                                Rectangle {
+                                    visible: updateChecker.updateAvailable
+                                    width: newVerText.implicitWidth + 14
+                                    height: 22
+                                    radius: 11
+                                    color: Theme.primaryBg
+
+                                    Text {
+                                        id: newVerText
+                                        anchors.centerIn: parent
+                                        text: "新版本 " + updateChecker.latestVersion
+                                        font.pixelSize: Theme.fontSmall
+                                        font.weight: Font.Medium
+                                        color: Theme.primaryHover
+                                    }
+                                }
+
+                                Item { Layout.fillWidth: true }
+
+                                Button {
+                                    flat: true
+                                    enabled: !updateChecker.checking
+                                    onClicked: updateChecker.check(false)
+
+                                    contentItem: RowLayout {
+                                        spacing: 6
+                                        AppIcon {
+                                            name: "refresh"; width: 14; height: 14
+                                            iconColor: Theme.textSecondary
+                                        }
+                                        Text {
+                                            text: updateChecker.checking ? "检查中…" : "检查更新"
+                                            font.pixelSize: Theme.fontNormal
+                                            color: Theme.textSecondary
+                                        }
+                                    }
+                                }
+
+                                Button {
+                                    visible: updateChecker.updateAvailable
+                                    highlighted: true
+                                    onClicked: updateChecker.openReleasePage()
+
+                                    contentItem: RowLayout {
+                                        spacing: 6
+                                        AppIcon {
+                                            name: "doc"; width: 14; height: 14
+                                            iconColor: "white"
+                                        }
+                                        Text {
+                                            text: "前往下载"
+                                            font.pixelSize: Theme.fontNormal
+                                            color: "white"
+                                        }
+                                    }
+                                }
+                            }
+
+                            Text {
+                                visible: updateChecker.statusText.length > 0
+                                text: updateChecker.statusText
+                                color: updateChecker.updateAvailable ? Theme.primaryHover : Theme.textTertiary
+                                font.pixelSize: Theme.fontSmall
+                            }
+
+                            // 更新日志（有更新时显示）
+                            Rectangle {
+                                Layout.fillWidth: true
+                                visible: updateChecker.updateAvailable && updateChecker.releaseNotes.length > 0
+                                implicitHeight: Math.min(notesText.implicitHeight + 20, 160)
+                                radius: Theme.radius
+                                color: Theme.field
+
+                                ScrollView {
+                                    anchors.fill: parent
+                                    anchors.margins: 10
+                                    clip: true
+
+                                    Text {
+                                        id: notesText
+                                        width: parent.width
+                                        text: updateChecker.releaseNotes
+                                        color: Theme.textSecondary
+                                        font.pixelSize: Theme.fontSmall
+                                        wrapMode: Text.WordWrap
+                                    }
+                                }
                             }
                         }
                     }
