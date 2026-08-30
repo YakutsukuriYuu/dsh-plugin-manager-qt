@@ -41,7 +41,7 @@ void RemoteManager::saveServers()
 void RemoteManager::addServer(const QString &name, const QString &target)
 {
     const QString n = name.trimmed();
-    const QString t = target.trimmed();
+    const QString t = sanitizeTarget(target);
     if (n.isEmpty() || t.isEmpty()) {
         emit errorOccurred("服务器名称和地址不能为空");
         return;
@@ -65,7 +65,7 @@ void RemoteManager::addServer(const QString &name, const QString &target)
 void RemoteManager::editServer(const QString &name, const QString &newName, const QString &newTarget)
 {
     const QString n = newName.trimmed();
-    const QString t = newTarget.trimmed();
+    const QString t = sanitizeTarget(newTarget);
     if (n.isEmpty() || t.isEmpty()) {
         emit errorOccurred("服务器名称和地址不能为空");
         return;

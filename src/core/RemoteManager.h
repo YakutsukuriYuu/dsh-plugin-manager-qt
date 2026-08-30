@@ -44,6 +44,15 @@ private:
     void saveServers();
     void setConnecting(bool connecting);
 
+    // 规范化 SSH 目标：去掉误复制的 "ssh " 前缀
+    static QString sanitizeTarget(const QString &target)
+    {
+        QString t = target.trimmed();
+        if (t.startsWith(QStringLiteral("ssh ")))
+            t = t.mid(4).trimmed();
+        return t;
+    }
+
     PluginManager *m_pluginManager;
     QVariantList m_servers;
     bool m_connecting = false;

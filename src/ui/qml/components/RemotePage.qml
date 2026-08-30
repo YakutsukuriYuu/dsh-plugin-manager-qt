@@ -276,7 +276,7 @@ Rectangle {
         Text {
             Layout.fillWidth: true
             text: "提示：需要密钥认证（BatchMode 不支持密码）。请先用 ssh-copy-id user@host 配置免密登录；"
-                  + "也支持 ~/.ssh/config 中配置的 Host 别名。"
+                  + "也支持 ~/.ssh/config 中的 Host 别名（填别名本身，不带 ssh 前缀）。"
             font.pixelSize: Theme.fontSmall
             color: Theme.textTertiary
             wrapMode: Text.WordWrap
@@ -352,7 +352,7 @@ Rectangle {
             TextField {
                 id: serverTargetField
                 Layout.fillWidth: true
-                placeholderText: "user@192.168.1.100 或 ssh config 别名"
+                placeholderText: "user@192.168.1.100 或别名 home（不要带 ssh 前缀）"
             }
         }
 
@@ -401,7 +401,7 @@ Rectangle {
             TextField {
                 id: editTargetField
                 Layout.fillWidth: true
-                placeholderText: "user@192.168.1.100 或 ssh config 别名"
+                placeholderText: "user@192.168.1.100 或别名 home（不要带 ssh 前缀）"
             }
         }
 
