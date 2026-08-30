@@ -49,6 +49,26 @@ git push origin v0.1.0
 - **一键启动**：未检测到 DSH 会话时显示启动横幅，一键拉起
 - **自动刷新**：页面可见时每 4 秒刷新，切走自动停止
 
+### 🌐 SSH 远程服务器管理
+
+远程管理服务器上的 DSH 插件：
+
+- **服务器列表**：备注名 + SSH 地址 + 端口，QSettings 持久化
+- **地址解析**：支持 `user@host -p 6005`、`ssh -p 6005 user@host` 等格式，粘贴完整命令自动拆分端口
+- **认证方式**：密钥认证（需 `ssh-copy-id` 免密）或密码认证（OpenSSH `SSH_ASKPASS` 机制，无需 sshpass；可选"记住密码"）
+- **异步连接**：连接 + 首次扫描在工作线程执行，不阻塞 UI，期间显示等待动画
+- **完整的插件操作**：浏览/启用/禁用/安装/卸载、Profile 切换，全部走远程
+- **打开目录**：远程模式复制路径到剪贴板
+
+### 🔄 插件同步（本地 → 远程）
+
+- **同步清单**：默认只显示直接安装的插件（子依赖自动随父插件带上），「子依赖」开关可展开
+- **选择性同步**：全选 / 仅选需更新 / 手动勾选
+- **版本策略**：本地为主（远程较新也被本地覆盖）
+- **依赖闭包**：选中聚合包时自动带上其 DSH 子依赖，保证远程可运行
+- **实时进度**：进度条 + 逐插件日志，全程工作线程执行
+- **网络容错**：上传失败自动重试 2 次
+
 ## 🔍 DSH 插件模型
 
 | 状态 | 判定方式 |
@@ -90,35 +110,54 @@ open build/bin/dsh-plugin-manager.app
 ## 📁 项目结构
 
 ```
-├── CMakeLists.txt              # 构建配置（QML 模块、Theme 单例声明）
+├── CMakeLists.txt              # 构建配置（QML 模块、Theme 单例、图标/Liquid Glass 资源）
+├── cmake/Info.plist.in         # 自定义 Info.plist（含 CFBundleIconName 声明 LG 图标）
+├── resources/                  # 应用图标（.icon 源文件 + 预编译 Assets.car）+ Logo
+├── resources/icons/            # Lucide SVG 图标及 tools/make_icons.py 烘焙的主题色变体
+├── tools/make_icons.py         # 把 Lucide currentColor SVG 批量烘焙成 6 个主题色
 ├── src/
-│   ├── main.cpp                # 入口：注册 pluginManager / tmuxManager 上下文属性
+│   ├── main.cpp                # 入口：注册 5 个上下文属性（plugin/tmux/update/remote/sync）
 │   ├── core/
-│   │   ├── PluginManager.*     # 插件管理（扫描/启停/安装/卸载，主线程同步执行）
-│   │   └── TmuxManager.*       # tmux 会话管理（list/capture/send-keys/new/kill）
+│   │   ├── PluginBackend.h     # 后端抽象接口（本机/远程统一）
+│   │   ├── LocalBackend.h      # 本机后端（QFile/QDir）
+│   │   ├── SshBackend.h        # SSH 后端（端口/密码/askpass/一次扫描/tar 上传）
+│   │   ├── PluginManager.*     # 插件管理核心（对接 backend，异步远程连接）
+│   │   ├── RemoteManager.*     # 服务器列表 CRUD + 连接切换
+│   │   ├── SyncManager.*       # 本地→远程同步（计划/闭包/上传/配置更新）
+│   │   ├── TmuxManager.*       # tmux 会话管理
+│   │   └── UpdateChecker.*     # GitHub Releases 更新检查
 │   └── ui/qml/
 │       ├── Theme.qml           # 单例：颜色/字号主题
 │       ├── Main.qml            # 主窗口（侧边栏 + 页面 + 对话框）
 │       └── components/
-│           ├── PluginList.qml  # 插件列表页（搜索/刷新/子依赖折叠）
+│           ├── AppIcon.qml     # 矢量图标组件（按 iconColor 加载烘焙变体）
+│           ├── PluginList.qml  # 插件列表页（搜索/筛选/子依赖折叠/远程横幅）
 │           ├── PluginCard.qml  # 插件卡片（Switch 启停 + 幽灵图标按钮）
-│           └── TmuxPage.qml    # tmux 会话页（会话卡片/输出查看/新建会话）
+│           ├── TmuxPage.qml    # tmux 会话页
+│           ├── RemotePage.qml  # 远程服务器页
+│           └── SyncDialog.qml  # 同步对话框
 └── build/                      # 构建输出（不入库）
 ```
 
 ## 🏗️ 技术要点
 
-- **线程模型**：所有扫描在主线程同步执行（仅读少量 JSON，毫秒级完成），数据以 `QVariantList` / `QVariantMap` 暴露给 QML，彻底避免 QObject 跨线程问题
-- **Theme 单例**：通过 `QT_QML_SINGLETON_TYPE` 声明，各 QML 文件 `import DshPluginManager` 后使用 `Theme.xxx`
-- **工具查找**：`dsh` / `tmux` 依次检查 `$PATH`、`/opt/homebrew/bin`、npx 缓存路径；执行子进程时自动补充 PATH 以便找到 node/npm/pnpm
-- **UI 组件**：启用/禁用使用带滑动动画的 Switch（行业标准交互）；次要操作使用幽灵图标按钮，悬停才显现背景
+- **后端抽象**：所有插件文件/命令操作走 `PluginBackend` 接口，本机（`QFile`/`QDir`）与远程（`ssh`）逻辑完全复用，上层 `PluginManager` 无感知
+- **异步模型**：远程连接 + 首次扫描用 `QtConcurrent` 跑在工作线程，`QFutureWatcher` 把结果移回主线程，全程不阻塞 UI；扫描逻辑提取为静态函数保证跨线程安全
+- **单次往返扫描**：远程扫描把整个 `node_modules` 的所有 `package.json` 合并为一条 shell 脚本抓取（`@@@ENTRY` 分隔符），避免逐文件 SSH 往返
+- **密码认证**：OpenSSH `SSH_ASKPASS_REQUIRE=force` 机制（临时 0700 脚本输出密码），不依赖 sshpass；`tar | ssh` 上传用 `QProcess::setStandardOutputProcess`
+- **Theme 单例**：`QT_QML_SINGLETON_TYPE` 声明；操作按钮用 Lucide SVG + 预烘焙着色变体（Qt 6.11 无公开 currentColor 支持）
+- **图标**：Liquid Glass 新格式 `.icon` 经 `actool` 编译进 `Assets.car`，Dock 中铺满显示（macOS 27）
 
 ## 📋 路线图
 
+- [x] 插件浏览/启停/安装/卸载
+- [x] tmux 会话管理
+- [x] SSH 远程服务器管理（端口/密码/异步连接）
+- [x] 本地 → 远程插件同步（选择性 + 依赖闭包）
+- [x] GitHub Releases 更新检查
 - [ ] 插件详情页（README 预览、依赖树）
 - [ ] 插件市场（从 npm registry 搜索 DSH 插件）
 - [ ] 多 Profile 批量操作
-- [ ] DSH 会话日志流式显示（而非定时抓取）
 - [ ] Windows / Linux 适配
 
 ## 许可证
