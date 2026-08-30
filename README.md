@@ -8,10 +8,13 @@
 
 在 [Releases](https://github.com/YakutsukuriYuu/dsh-plugin-manager-qt/releases) 页面下载最新的 `dsh-plugin-manager-macos-arm64.dmg`（macOS Apple Silicon）。
 
-> **注意**：应用未进行 Apple 签名，首次打开时 macOS 会拦截。两种解决方法：
+> **⚠️ 首次打开必看**：应用未购买 Apple 开发者签名（$99/年），从浏览器下载后 macOS 会报「已损坏，无法打开」。**这不是真的损坏**，是 Gatekeeper 对网络下载应用的隔离拦截。把应用拖进「应用程序」文件夹后执行：
 >
-> 1. 右键点击应用 →「打开」→ 在弹窗中点「打开」
-> 2. 或终端执行：`xattr -cr /Applications/dsh-plugin-manager.app`
+> ```bash
+> xattr -cr /Applications/dsh-plugin-manager.app
+> ```
+>
+> 之后即可正常双击打开。
 
 ## 🚀 发版（维护者）
 

@@ -32,7 +32,15 @@ jobs:
       - name: 打包 DMG
         run: |
           # macdeployqt 会把依赖的 Qt 框架拷进 .app，使其可在无 Qt 的机器上运行
-          macdeployqt build/bin/dsh-plugin-manager.app -qmldir=src/ui/qml -dmg
+          macdeployqt build/bin/dsh-plugin-manager.app -qmldir=src/ui/qml
+
+          # 关键：macdeployqt 留下的 linker ad-hoc 签名不完整（资源未封装），
+          # Apple Silicon 上会被系统判为"已损坏"。重新对整个 bundle 完整签名：
+          codesign --force --deep --sign - --timestamp=none build/bin/dsh-plugin-manager.app
+          # 验证签名完整性（Sealed Resources 必须有文件数）
+          codesign -dv --verbose=2 build/bin/dsh-plugin-manager.app 2>&1 | grep -E "Signature|Sealed"
+
+          macdeployqt build/bin/dsh-plugin-manager.app -dmg
           mv build/bin/dsh-plugin-manager.dmg dsh-plugin-manager-macos-arm64.dmg
           ls -lh dsh-plugin-manager-macos-arm64.dmg
 
