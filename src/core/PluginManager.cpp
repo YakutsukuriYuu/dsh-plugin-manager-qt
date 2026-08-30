@@ -150,39 +150,47 @@ QVariantMap PluginManager::analyzePlugin(const QString &pluginPath, const QStrin
     return result;
 }
 
-// 收集 node_modules 下所有顶层包的路径（含 scoped 包，解析符号链接）
-static QStringList collectPackagePaths(const QString &nodeModulesPath)
+// node_modules 中的一个顶层包条目
+struct PackageEntry {
+    QString entryPath;     // node_modules 下的入口路径（可能是符号链接）
+    QString resolvedPath;  // 解析符号链接后的真实路径
+};
+
+// 收集 node_modules 下所有顶层包（含 scoped 包）
+static QList<PackageEntry> collectPackageEntries(const QString &nodeModulesPath)
 {
-    QStringList paths;
+    QList<PackageEntry> entries;
     QDir nodeModulesDir(nodeModulesPath);
     if (!nodeModulesDir.exists())
-        return paths;
+        return entries;
 
-    const auto entries = nodeModulesDir.entryList(
+    const auto modules = nodeModulesDir.entryList(
         QDir::Dirs | QDir::NoDotAndDotDot | QDir::System);
-    for (const QString &module : entries) {
+    for (const QString &module : modules) {
         if (module.startsWith("@")) {
             // scoped 包（@scope/name）
             QDir scopedDir(nodeModulesDir.absoluteFilePath(module));
             const auto scoped = scopedDir.entryList(
                 QDir::Dirs | QDir::NoDotAndDotDot | QDir::System);
             for (const QString &sub : scoped) {
-                QString path = scopedDir.absoluteFilePath(sub);
-                QFileInfo fi(path);
+                QString entryPath = scopedDir.absoluteFilePath(sub);
+                QString resolved = entryPath;
+                QFileInfo fi(entryPath);
                 if (fi.isSymLink())
-                    path = fi.symLinkTarget();
-                paths << path;
+                    resolved = fi.symLinkTarget();
+                entries.append({entryPath, resolved});
             }
             continue;
         }
 
-        QString path = nodeModulesDir.absoluteFilePath(module);
-        QFileInfo fi(path);
+        QString entryPath = nodeModulesDir.absoluteFilePath(module);
+        QString resolved = entryPath;
+        QFileInfo fi(entryPath);
         if (fi.isSymLink())
-            path = fi.symLinkTarget();
-        paths << path;
+            resolved = fi.symLinkTarget();
+        entries.append({entryPath, resolved});
     }
-    return paths;
+    return entries;
 }
 
 void PluginManager::scanPlugins()
@@ -205,13 +213,13 @@ void PluginManager::scanPlugins()
             }
         }
 
-        const QStringList packagePaths =
-            collectPackagePaths(profileDir() + "/node_modules");
+        const QList<PackageEntry> packageEntries =
+            collectPackageEntries(profileDir() + "/node_modules");
 
         // 第一遍：收集所有包的 dependencies，构建「被其他包依赖」集合
         QSet<QString> transitiveDeps;
-        for (const QString &path : packagePaths) {
-            QFile packageFile(path + "/package.json");
+        for (const auto &entry : packageEntries) {
+            QFile packageFile(entry.resolvedPath + "/package.json");
             if (!packageFile.open(QIODevice::ReadOnly))
                 continue;
             const QJsonDocument doc = QJsonDocument::fromJson(packageFile.readAll());
@@ -223,8 +231,8 @@ void PluginManager::scanPlugins()
         }
 
         // 第二遍：筛出 DSH 插件，并标记是否为「直接安装」
-        for (const QString &path : packagePaths) {
-            QVariantMap plugin = analyzePlugin(path, enabledBundles);
+        for (const auto &entry : packageEntries) {
+            QVariantMap plugin = analyzePlugin(entry.resolvedPath, enabledBundles);
             if (plugin.isEmpty())
                 continue;
 
@@ -232,6 +240,8 @@ void PluginManager::scanPlugins()
             // 直接安装 = 在 profile dependencies 中，或不被任何其他包依赖
             const bool direct = profileDeps.contains(name) || !transitiveDeps.contains(name);
             plugin["direct"] = direct;
+            plugin["entryPath"] = entry.entryPath;      // node_modules 入口（卸载符号链接时用）
+            plugin["inProfileDeps"] = profileDeps.contains(name);  // 是否由 dsh/pnpm 管理
             found << plugin;
         }
 
@@ -284,17 +294,73 @@ void PluginManager::uninstallPlugin(const QString &pluginId)
         return;
     }
 
-    setLoading(true);
-    QString output;
-    const bool ok = runDsh({"plugin", "--profile", m_currentProfile, "remove", pluginId}, &output);
-    setLoading(false);
-    setLastOutput(output);
+    // 找到目标插件
+    QVariantMap target;
+    for (const QVariant &v : m_plugins) {
+        const QVariantMap p = v.toMap();
+        if (p.value("id").toString() == pluginId) {
+            target = p;
+            break;
+        }
+    }
+    if (target.isEmpty()) {
+        emit errorOccurred("找不到插件: " + pluginId);
+        return;
+    }
 
-    if (ok) {
-        emit operationSucceeded("卸载成功: " + pluginId);
+    const bool inProfileDeps = target.value("inProfileDeps").toBool();
+    const QString entryPath = target.value("entryPath").toString();
+
+    if (inProfileDeps) {
+        // ===== 情况 1：pnpm/dsh 管理的包 → 走标准卸载流程 =====
+        setLoading(true);
+        QString output;
+        const bool ok = runDsh({"plugin", "--profile", m_currentProfile, "remove", pluginId}, &output);
+        setLoading(false);
+        setLastOutput(output);
+
+        if (ok) {
+            emit operationSucceeded("卸载成功: " + pluginId);
+            scanPlugins();
+        } else {
+            emit errorOccurred("卸载失败: " + pluginId + "\n" + output);
+        }
+        return;
+    }
+
+    // ===== 情况 2：手动链接的本地插件（符号链接）→ 直接删除链接 =====
+    if (QFileInfo(entryPath).isSymLink()) {
+        if (!QFile::remove(entryPath)) {
+            emit errorOccurred("删除链接失败: " + entryPath);
+            return;
+        }
+        // 顺手从 bundles 中移除（如果曾启用过）
+        QStringList bundles = readEnabledBundles();
+        if (bundles.removeAll(pluginId) > 0)
+            writeEnabledBundles(bundles);
+
+        emit operationSucceeded("已移除本地链接插件: " + pluginId + "\n（本地源文件不受影响）");
+        scanPlugins();
+        return;
+    }
+
+    // ===== 情况 3：其他插件的子依赖 → 不允许单独卸载 =====
+    if (!target.value("direct").toBool()) {
+        emit errorOccurred(pluginId + " 是其他插件的子依赖，不能单独卸载。\n"
+                           "如需移除，请卸载依赖它的插件（如 @linxin666/dsh-web-all）。");
+        return;
+    }
+
+    // ===== 情况 4：孤儿目录（手动拷入、无包管理器记录）→ 删除目录 =====
+    QDir dir(entryPath);
+    if (dir.removeRecursively()) {
+        QStringList bundles = readEnabledBundles();
+        if (bundles.removeAll(pluginId) > 0)
+            writeEnabledBundles(bundles);
+        emit operationSucceeded("已删除插件目录: " + pluginId);
         scanPlugins();
     } else {
-        emit errorOccurred("卸载失败: " + pluginId + "\n" + output);
+        emit errorOccurred("删除插件目录失败: " + entryPath);
     }
 }
 
