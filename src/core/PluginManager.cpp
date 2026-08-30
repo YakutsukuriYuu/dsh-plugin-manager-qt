@@ -1,35 +1,81 @@
 #include "PluginManager.h"
+#include "LocalBackend.h"
+#include "SshBackend.h"
 
-#include <QDir>
-#include <QFile>
-#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QStandardPaths>
-#include <QDesktopServices>
-#include <QUrl>
-#include <QProcessEnvironment>
-#include <QSet>
 #include <QSettings>
 #include <algorithm>
 
 PluginManager::PluginManager(QObject *parent)
     : QObject(parent)
 {
-    m_dshHome = QDir::homePath() + "/.dsh";
+    auto local = std::make_unique<LocalBackend>();
 
-    // 优先使用用户在设置页保存的路径，否则自动检测
+    // dsh 路径：优先用户设置，否则自动检测（仅本机模式有意义）
     QSettings settings("DSH", "dsh-plugin-manager");
-    m_dshExecutable = settings.value("dshExecutable").toString();
-    if (m_dshExecutable.isEmpty())
-        m_dshExecutable = findDshExecutable();
+    QString saved = settings.value("dshExecutable").toString();
+    local->setDshExecutable(saved.isEmpty() ? local->findDshExecutable() : saved);
 
+    m_backend = std::move(local);
     scanProfiles();
-    if (!m_profiles.isEmpty()) {
+    if (!m_profiles.isEmpty())
         m_currentProfile = m_profiles.first();
-    }
     scanPlugins();
+}
+
+QString PluginManager::dshHome() const
+{
+    return m_backend ? m_backend->dshHome() : QString();
+}
+
+QString PluginManager::dshExecutable() const
+{
+    auto *local = dynamic_cast<LocalBackend*>(m_backend.get());
+    return local ? local->dshExecutable() : QString();
+}
+
+bool PluginManager::remoteActive() const
+{
+    return m_backend && m_backend->isRemote();
+}
+
+QString PluginManager::backendName() const
+{
+    return m_backend ? m_backend->displayName() : QString();
+}
+
+void PluginManager::useLocalBackend()
+{
+    if (!remoteActive())
+        return;
+    auto local = std::make_unique<LocalBackend>();
+    QSettings settings("DSH", "dsh-plugin-manager");
+    QString saved = settings.value("dshExecutable").toString();
+    local->setDshExecutable(saved.isEmpty() ? local->findDshExecutable() : saved);
+    m_backend = std::move(local);
+    m_currentProfile.clear();
+    emit backendChanged();
+    refresh();
+}
+
+bool PluginManager::useRemoteBackend(const QString &target, const QString &label, QString *errorMessage)
+{
+    auto remote = std::make_unique<SshBackend>(target, label);
+
+    setLoading(true);
+    const bool ok = remote->connectInit(errorMessage);
+    setLoading(false);
+
+    if (!ok)
+        return false;
+
+    m_backend = std::move(remote);
+    m_currentProfile.clear();
+    emit backendChanged();
+    refresh();
+    return true;
 }
 
 void PluginManager::setCurrentProfile(const QString &profile)
@@ -43,7 +89,7 @@ void PluginManager::setCurrentProfile(const QString &profile)
 
 QString PluginManager::profileDir() const
 {
-    return m_dshHome + "/profiles/" + m_currentProfile;
+    return dshHome() + "/profiles/" + m_currentProfile;
 }
 
 void PluginManager::refresh()
@@ -54,17 +100,7 @@ void PluginManager::refresh()
 
 void PluginManager::scanProfiles()
 {
-    QStringList found;
-    QDir profilesDir(m_dshHome + "/profiles");
-    if (profilesDir.exists()) {
-        const auto entries = profilesDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
-        for (const QString &name : entries) {
-            // 只把含 package.json 的目录视为 profile
-            if (QFile::exists(profilesDir.absoluteFilePath(name + "/package.json"))) {
-                found << name;
-            }
-        }
-    }
+    const QStringList found = m_backend->listProfiles();
     if (found != m_profiles) {
         m_profiles = found;
         emit profilesChanged();
@@ -73,17 +109,22 @@ void PluginManager::scanProfiles()
         m_currentProfile = m_profiles.first();
         emit currentProfileChanged();
     }
+    // 当前 profile 在目标上不存在时，回退到第一个
+    if (!m_currentProfile.isEmpty() && !m_profiles.isEmpty()
+        && !m_profiles.contains(m_currentProfile)) {
+        m_currentProfile = m_profiles.first();
+        emit currentProfileChanged();
+    }
 }
 
 QStringList PluginManager::readEnabledBundles() const
 {
     QStringList bundles;
-    QFile file(profileDir() + "/package.json");
-    if (!file.open(QIODevice::ReadOnly))
+    const QString content = m_backend->readFile(profileDir() + "/package.json");
+    if (content.isEmpty())
         return bundles;
 
-    const QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
-    const QJsonArray arr = doc.object()
+    const QJsonArray arr = QJsonDocument::fromJson(content.toUtf8()).object()
                                .value("dsh").toObject()
                                .value("profile").toObject()
                                .value("bundles").toArray();
@@ -95,102 +136,53 @@ QStringList PluginManager::readEnabledBundles() const
 bool PluginManager::writeEnabledBundles(const QStringList &bundles)
 {
     const QString path = profileDir() + "/package.json";
-    QFile file(path);
-    if (!file.open(QIODevice::ReadOnly)) {
+    const QString content = m_backend->readFile(path);
+    if (content.isEmpty()) {
         emit errorOccurred("无法读取 profile package.json: " + path);
         return false;
     }
-    const QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
-    file.close();
 
-    QJsonObject root = doc.object();
+    QJsonObject root = QJsonDocument::fromJson(content.toUtf8()).object();
     QJsonObject dsh = root.value("dsh").toObject();
     QJsonObject profile = dsh.value("profile").toObject();
     profile["bundles"] = QJsonArray::fromStringList(bundles);
     dsh["profile"] = profile;
     root["dsh"] = dsh;
 
-    QFile out(path);
-    if (!out.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+    if (!m_backend->writeFile(path, QString::fromUtf8(
+                QJsonDocument(root).toJson(QJsonDocument::Indented)))) {
         emit errorOccurred("无法写入 profile package.json: " + path);
         return false;
     }
-    out.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
     return true;
 }
 
-QVariantMap PluginManager::analyzePlugin(const QString &pluginPath, const QStringList &enabledBundles) const
+QVariantMap PluginManager::analyzePlugin(const QString &resolvedPath, const QByteArray &packageJson,
+                                         const QStringList &enabledBundles) const
 {
     QVariantMap result;
-    QFile packageFile(pluginPath + "/package.json");
-    if (!packageFile.open(QIODevice::ReadOnly))
-        return result;
-
-    const QJsonDocument doc = QJsonDocument::fromJson(packageFile.readAll());
+    const QJsonDocument doc = QJsonDocument::fromJson(packageJson);
     if (doc.isNull() || !doc.isObject())
         return result;
 
-    const QJsonObject packageJson = doc.object();
-    const QJsonObject dshConfig = packageJson.value("dsh").toObject();
+    const QJsonObject packageJsonObj = doc.object();
+    const QJsonObject dshConfig = packageJsonObj.value("dsh").toObject();
     if (dshConfig.isEmpty())
         return result; // 不是 DSH 插件
 
-    const QString name = packageJson.value("name").toString();
+    const QString name = packageJsonObj.value("name").toString();
     const QJsonObject bundleConfig = dshConfig.value("bundle").toObject();
 
     result["id"] = name;
     result["name"] = name;
-    result["version"] = packageJson.value("version").toString();
-    result["description"] = packageJson.value("description").toString();
+    result["version"] = packageJsonObj.value("version").toString();
+    result["description"] = packageJsonObj.value("description").toString();
     result["installed"] = true;
     result["enabled"] = enabledBundles.contains(name);
     result["hasBundlePatch"] = !bundleConfig.value("patch").toString().isEmpty();
-    result["path"] = pluginPath;
+    result["path"] = resolvedPath;
     result["profile"] = m_currentProfile;
     return result;
-}
-
-// node_modules 中的一个顶层包条目
-struct PackageEntry {
-    QString entryPath;     // node_modules 下的入口路径（可能是符号链接）
-    QString resolvedPath;  // 解析符号链接后的真实路径
-};
-
-// 收集 node_modules 下所有顶层包（含 scoped 包）
-static QList<PackageEntry> collectPackageEntries(const QString &nodeModulesPath)
-{
-    QList<PackageEntry> entries;
-    QDir nodeModulesDir(nodeModulesPath);
-    if (!nodeModulesDir.exists())
-        return entries;
-
-    const auto modules = nodeModulesDir.entryList(
-        QDir::Dirs | QDir::NoDotAndDotDot | QDir::System);
-    for (const QString &module : modules) {
-        if (module.startsWith("@")) {
-            // scoped 包（@scope/name）
-            QDir scopedDir(nodeModulesDir.absoluteFilePath(module));
-            const auto scoped = scopedDir.entryList(
-                QDir::Dirs | QDir::NoDotAndDotDot | QDir::System);
-            for (const QString &sub : scoped) {
-                QString entryPath = scopedDir.absoluteFilePath(sub);
-                QString resolved = entryPath;
-                QFileInfo fi(entryPath);
-                if (fi.isSymLink())
-                    resolved = fi.symLinkTarget();
-                entries.append({entryPath, resolved});
-            }
-            continue;
-        }
-
-        QString entryPath = nodeModulesDir.absoluteFilePath(module);
-        QString resolved = entryPath;
-        QFileInfo fi(entryPath);
-        if (fi.isSymLink())
-            resolved = fi.symLinkTarget();
-        entries.append({entryPath, resolved});
-    }
-    return entries;
 }
 
 void PluginManager::scanPlugins()
@@ -204,25 +196,19 @@ void PluginManager::scanPlugins()
         // Profile 直接声明的依赖（dsh plugin add 安装的包）
         QSet<QString> profileDeps;
         {
-            QFile file(profileDir() + "/package.json");
-            if (file.open(QIODevice::ReadOnly)) {
-                const QJsonObject deps = QJsonDocument::fromJson(file.readAll())
-                                             .object().value("dependencies").toObject();
-                for (auto it = deps.begin(); it != deps.end(); ++it)
-                    profileDeps.insert(it.key());
-            }
+            const QString content = m_backend->readFile(profileDir() + "/package.json");
+            const QJsonObject deps = QJsonDocument::fromJson(content.toUtf8())
+                                         .object().value("dependencies").toObject();
+            for (auto it = deps.begin(); it != deps.end(); ++it)
+                profileDeps.insert(it.key());
         }
 
-        const QList<PackageEntry> packageEntries =
-            collectPackageEntries(profileDir() + "/node_modules");
+        const auto packageEntries = m_backend->listPackages(m_currentProfile);
 
         // 第一遍：收集所有包的 dependencies，构建「被其他包依赖」集合
         QSet<QString> transitiveDeps;
         for (const auto &entry : packageEntries) {
-            QFile packageFile(entry.resolvedPath + "/package.json");
-            if (!packageFile.open(QIODevice::ReadOnly))
-                continue;
-            const QJsonDocument doc = QJsonDocument::fromJson(packageFile.readAll());
+            const QJsonDocument doc = QJsonDocument::fromJson(entry.packageJson);
             if (doc.isNull() || !doc.isObject())
                 continue;
             const QJsonObject deps = doc.object().value("dependencies").toObject();
@@ -230,9 +216,9 @@ void PluginManager::scanPlugins()
                 transitiveDeps.insert(it.key());
         }
 
-        // 第二遍：筛出 DSH 插件，并标记是否为「直接安装」
+        // 第二遍：筛出 DSH 插件，并标记「直接安装」
         for (const auto &entry : packageEntries) {
-            QVariantMap plugin = analyzePlugin(entry.resolvedPath, enabledBundles);
+            QVariantMap plugin = analyzePlugin(entry.resolvedPath, entry.packageJson, enabledBundles);
             if (plugin.isEmpty())
                 continue;
 
@@ -240,8 +226,8 @@ void PluginManager::scanPlugins()
             // 直接安装 = 在 profile dependencies 中，或不被任何其他包依赖
             const bool direct = profileDeps.contains(name) || !transitiveDeps.contains(name);
             plugin["direct"] = direct;
-            plugin["entryPath"] = entry.entryPath;      // node_modules 入口（卸载符号链接时用）
-            plugin["inProfileDeps"] = profileDeps.contains(name);  // 是否由 dsh/pnpm 管理
+            plugin["entryPath"] = entry.entryPath;
+            plugin["inProfileDeps"] = profileDeps.contains(name);
             found << plugin;
         }
 
@@ -275,7 +261,7 @@ void PluginManager::installPlugin(const QString &packageName)
 
     setLoading(true);
     QString output;
-    const bool ok = runDsh({"plugin", "--profile", m_currentProfile, "add", packageName}, &output);
+    const bool ok = m_backend->runDsh({"plugin", "--profile", m_currentProfile, "add", packageName}, &output);
     setLoading(false);
     setLastOutput(output);
 
@@ -311,11 +297,11 @@ void PluginManager::uninstallPlugin(const QString &pluginId)
     const bool inProfileDeps = target.value("inProfileDeps").toBool();
     const QString entryPath = target.value("entryPath").toString();
 
+    // ===== 情况 1：包管理器管理的包 → dsh plugin remove =====
     if (inProfileDeps) {
-        // ===== 情况 1：pnpm/dsh 管理的包 → 走标准卸载流程 =====
         setLoading(true);
         QString output;
-        const bool ok = runDsh({"plugin", "--profile", m_currentProfile, "remove", pluginId}, &output);
+        const bool ok = m_backend->runDsh({"plugin", "--profile", m_currentProfile, "remove", pluginId}, &output);
         setLoading(false);
         setLastOutput(output);
 
@@ -328,40 +314,26 @@ void PluginManager::uninstallPlugin(const QString &pluginId)
         return;
     }
 
-    // ===== 情况 2：手动链接的本地插件（符号链接）→ 直接删除链接 =====
-    if (QFileInfo(entryPath).isSymLink()) {
-        if (!QFile::remove(entryPath)) {
-            emit errorOccurred("删除链接失败: " + entryPath);
+    // ===== 情况 2/4：符号链接或孤儿目录 → 直接删除入口 =====
+    if (target.value("direct").toBool()) {
+        QString error;
+        if (!m_backend->removeEntry(entryPath, &error)) {
+            emit errorOccurred(error);
             return;
         }
-        // 顺手从 bundles 中移除（如果曾启用过）
         QStringList bundles = readEnabledBundles();
         if (bundles.removeAll(pluginId) > 0)
             writeEnabledBundles(bundles);
-
-        emit operationSucceeded("已移除本地链接插件: " + pluginId + "\n（本地源文件不受影响）");
+        emit operationSucceeded(remoteActive()
+                                ? "已删除远程插件入口: " + pluginId
+                                : "已移除插件: " + pluginId);
         scanPlugins();
         return;
     }
 
     // ===== 情况 3：其他插件的子依赖 → 不允许单独卸载 =====
-    if (!target.value("direct").toBool()) {
-        emit errorOccurred(pluginId + " 是其他插件的子依赖，不能单独卸载。\n"
-                           "如需移除，请卸载依赖它的插件（如 @linxin666/dsh-web-all）。");
-        return;
-    }
-
-    // ===== 情况 4：孤儿目录（手动拷入、无包管理器记录）→ 删除目录 =====
-    QDir dir(entryPath);
-    if (dir.removeRecursively()) {
-        QStringList bundles = readEnabledBundles();
-        if (bundles.removeAll(pluginId) > 0)
-            writeEnabledBundles(bundles);
-        emit operationSucceeded("已删除插件目录: " + pluginId);
-        scanPlugins();
-    } else {
-        emit errorOccurred("删除插件目录失败: " + entryPath);
-    }
+    emit errorOccurred(pluginId + " 是其他插件的子依赖，不能单独卸载。\n"
+                       "如需移除，请卸载依赖它的插件（如 @linxin666/dsh-web-all）。");
 }
 
 void PluginManager::togglePlugin(const QString &pluginId, bool enabled)
@@ -398,7 +370,9 @@ void PluginManager::openPluginDirectory(const QString &pluginId)
     for (const QVariant &v : m_plugins) {
         const QVariantMap p = v.toMap();
         if (p.value("id").toString() == pluginId) {
-            QDesktopServices::openUrl(QUrl::fromLocalFile(p.value("path").toString()));
+            m_backend->openDirectory(p.value("path").toString());
+            if (remoteActive())
+                emit operationSucceeded("远程路径已复制到剪贴板:\n" + p.value("path").toString());
             return;
         }
     }
@@ -407,76 +381,32 @@ void PluginManager::openPluginDirectory(const QString &pluginId)
 
 void PluginManager::openProfileDirectory()
 {
-    if (!m_currentProfile.isEmpty())
-        QDesktopServices::openUrl(QUrl::fromLocalFile(profileDir()));
+    if (m_currentProfile.isEmpty())
+        return;
+    m_backend->openDirectory(profileDir());
+    if (remoteActive())
+        emit operationSucceeded("远程路径已复制到剪贴板:\n" + profileDir());
 }
 
 void PluginManager::setDshExecutable(const QString &path)
 {
+    auto *local = dynamic_cast<LocalBackend*>(m_backend.get());
+    if (!local)
+        return; // 远程模式下 dsh 路径由 SshBackend 自动探测
+
     const QString trimmed = path.trimmed();
-    if (m_dshExecutable == trimmed)
+    if (local->dshExecutable() == trimmed)
         return;
 
-    m_dshExecutable = trimmed;
-
-    // 持久化到 QSettings（空字符串 = 清除自定义，恢复自动检测）
     QSettings settings("DSH", "dsh-plugin-manager");
     if (trimmed.isEmpty()) {
         settings.remove("dshExecutable");
-        m_dshExecutable = findDshExecutable();
+        local->setDshExecutable(local->findDshExecutable());
     } else {
         settings.setValue("dshExecutable", trimmed);
+        local->setDshExecutable(trimmed);
     }
-
     emit dshExecutableChanged();
-}
-
-QString PluginManager::findDshExecutable() const
-{
-    // 1. 从 PATH 查找
-    const QString found = QStandardPaths::findExecutable("dsh");
-    if (!found.isEmpty())
-        return found;
-
-    // 2. GUI 应用 PATH 可能不含 npm 全局 bin，检查常见位置
-    const QString home = QDir::homePath();
-    const QStringList candidates = {
-        "/opt/homebrew/bin/dsh",
-        "/usr/local/bin/dsh",
-        home + "/.npm/_npx/1e7f6d9597241db0/node_modules/.bin/dsh",
-    };
-    for (const QString &path : candidates) {
-        if (QFile::exists(path))
-            return path;
-    }
-    return QString();
-}
-
-bool PluginManager::runDsh(const QStringList &args, QString *output)
-{
-    if (m_dshExecutable.isEmpty()) {
-        *output = "找不到 dsh 命令。请在设置页配置 dsh 可执行文件路径。";
-        return false;
-    }
-
-    QProcess process;
-    // GUI 应用默认 PATH 很窄，补充常见 bin 目录以便 dsh 找到 node/npm/pnpm
-    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-    const QString home = QDir::homePath();
-    env.insert("PATH", env.value("PATH") + ":/opt/homebrew/bin:/usr/local/bin:"
-               + home + "/.npm/_npx/1e7f6d9597241db0/node_modules/.bin");
-    process.setProcessEnvironment(env);
-
-    process.start(m_dshExecutable, args);
-    if (!process.waitForFinished(120000)) { // 2 分钟超时
-        *output = "命令执行超时";
-        return false;
-    }
-
-    const QString out = QString::fromUtf8(process.readAllStandardOutput());
-    const QString err = QString::fromUtf8(process.readAllStandardError());
-    *output = (out + "\n" + err).trimmed();
-    return process.exitCode() == 0;
 }
 
 void PluginManager::setLoading(bool loading)

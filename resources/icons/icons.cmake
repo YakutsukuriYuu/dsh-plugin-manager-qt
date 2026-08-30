@@ -6,6 +6,12 @@ set(ICON_FILES
     resources/icons/close_white.svg
     resources/icons/close_danger.svg
     resources/icons/close_blue.svg
+    resources/icons/disconnect_secondary.svg
+    resources/icons/disconnect_primary.svg
+    resources/icons/disconnect_tertiary.svg
+    resources/icons/disconnect_white.svg
+    resources/icons/disconnect_danger.svg
+    resources/icons/disconnect_blue.svg
     resources/icons/doc_secondary.svg
     resources/icons/doc_primary.svg
     resources/icons/doc_tertiary.svg
@@ -30,6 +36,12 @@ set(ICON_FILES
     resources/icons/grid_white.svg
     resources/icons/grid_danger.svg
     resources/icons/grid_blue.svg
+    resources/icons/local_secondary.svg
+    resources/icons/local_primary.svg
+    resources/icons/local_tertiary.svg
+    resources/icons/local_white.svg
+    resources/icons/local_danger.svg
+    resources/icons/local_blue.svg
     resources/icons/play_secondary.svg
     resources/icons/play_primary.svg
     resources/icons/play_tertiary.svg
@@ -60,6 +72,12 @@ set(ICON_FILES
     resources/icons/search_white.svg
     resources/icons/search_danger.svg
     resources/icons/search_blue.svg
+    resources/icons/server_secondary.svg
+    resources/icons/server_primary.svg
+    resources/icons/server_tertiary.svg
+    resources/icons/server_white.svg
+    resources/icons/server_danger.svg
+    resources/icons/server_blue.svg
     resources/icons/terminal_secondary.svg
     resources/icons/terminal_primary.svg
     resources/icons/terminal_tertiary.svg

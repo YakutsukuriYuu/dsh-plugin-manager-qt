@@ -29,6 +29,7 @@ set(SOURCES
     src/core/PluginManager.cpp
     src/core/TmuxManager.cpp
     src/core/UpdateChecker.cpp
+    src/core/RemoteManager.cpp
 )
 
 qt_add_executable(dsh-plugin-manager ${SOURCES})
@@ -66,6 +67,7 @@ qt_add_qml_module(dsh-plugin-manager
         src/ui/qml/components/PluginList.qml
         src/ui/qml/components/PluginCard.qml
         src/ui/qml/components/TmuxPage.qml
+        src/ui/qml/components/RemotePage.qml
 )
 
 target_link_libraries(dsh-plugin-manager PRIVATE

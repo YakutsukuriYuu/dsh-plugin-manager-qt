@@ -124,6 +124,7 @@ ApplicationWindow {
                     model: [
                         { "name": "插件管理", "icon": "grid" },
                         { "name": "终端会话", "icon": "terminal" },
+                        { "name": "远程服务器", "icon": "server" },
                         { "name": "设置", "icon": "gear" }
                     ]
 
@@ -212,6 +213,10 @@ ApplicationWindow {
 
             // 终端会话
             TmuxPage {
+            }
+
+            // 远程服务器
+            RemotePage {
             }
 
             // 设置页面

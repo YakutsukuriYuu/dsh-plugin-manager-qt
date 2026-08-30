@@ -3,21 +3,24 @@
 #include <QObject>
 #include <QVariantList>
 #include <QStringList>
-#include <QProcess>
+#include <memory>
+
+#include "PluginBackend.h"
 
 /**
  * DSH 插件管理器核心类。
  *
+ * 所有文件/命令操作通过 PluginBackend 完成：
+ *  - 本机：LocalBackend（QFile/QDir）
+ *  - 远程：SshBackend（ssh 命令）
+ * useRemoteBackend() / useLocalBackend() 切换目标后立即重新扫描。
+ *
  * 模型：
- *  - DSH 主目录：~/.dsh
- *  - Profile：~/.dsh/profiles/<name>/，含 package.json + node_modules/
- *  - 插件：node_modules 下 package.json 含 "dsh" 字段的包
- *  - 已启用：包名出现在 profile package.json 的 dsh.profile.bundles 数组中
+ *  - Profile：<dshHome>/profiles/<name>/，含 package.json
+ *  - 插件：Profile 的 node_modules/ 下 package.json 含 "dsh" 字段的包
+ *  - 已启用：包名在 profile package.json 的 dsh.profile.bundles 数组中
  *  - 安装/卸载：dsh plugin --profile <name> add/remove <pkg>
  *  - 启用/禁用：编辑 profile package.json 的 bundles 数组
- *
- * 所有扫描操作在主线程同步执行（仅读取少量目录和 JSON 文件，足够快），
- * 从而彻底避免 QObject 跨线程问题。
  */
 class PluginManager : public QObject
 {
@@ -26,9 +29,11 @@ class PluginManager : public QObject
     Q_PROPERTY(QStringList profiles READ profiles NOTIFY profilesChanged)
     Q_PROPERTY(QString currentProfile READ currentProfile WRITE setCurrentProfile NOTIFY currentProfileChanged)
     Q_PROPERTY(bool loading READ loading NOTIFY loadingChanged)
-    Q_PROPERTY(QString dshHome READ dshHome CONSTANT)
+    Q_PROPERTY(QString dshHome READ dshHome NOTIFY backendChanged)
     Q_PROPERTY(QString dshExecutable READ dshExecutable NOTIFY dshExecutableChanged)
     Q_PROPERTY(QString lastOutput READ lastOutput NOTIFY lastOutputChanged)
+    Q_PROPERTY(bool remoteActive READ remoteActive NOTIFY backendChanged)
+    Q_PROPERTY(QString backendName READ backendName NOTIFY backendChanged)
 
 public:
     explicit PluginManager(QObject *parent = nullptr);
@@ -37,9 +42,11 @@ public:
     QStringList profiles() const { return m_profiles; }
     QString currentProfile() const { return m_currentProfile; }
     bool loading() const { return m_loading; }
-    QString dshHome() const { return m_dshHome; }
-    QString dshExecutable() const { return m_dshExecutable; }
+    QString dshHome() const;
+    QString dshExecutable() const;
     QString lastOutput() const { return m_lastOutput; }
+    bool remoteActive() const;
+    QString backendName() const;
 
     void setCurrentProfile(const QString &profile);
 
@@ -50,7 +57,9 @@ public:
     Q_INVOKABLE void togglePlugin(const QString &pluginId, bool enabled);
     Q_INVOKABLE void openPluginDirectory(const QString &pluginId);
     Q_INVOKABLE void openProfileDirectory();
-    Q_INVOKABLE void setDshExecutable(const QString &path);
+    Q_INVOKABLE void setDshExecutable(const QString &path);   // 仅本机模式有效
+    Q_INVOKABLE void useLocalBackend();
+    Q_INVOKABLE bool useRemoteBackend(const QString &target, const QString &label, QString *errorMessage = nullptr);
 
 signals:
     void pluginsChanged();
@@ -59,23 +68,22 @@ signals:
     void loadingChanged();
     void dshExecutableChanged();
     void lastOutputChanged();
+    void backendChanged();
     void errorOccurred(const QString &message);
     void operationSucceeded(const QString &message);
 
 private:
     void scanProfiles();
     void scanPlugins();
-    QVariantMap analyzePlugin(const QString &pluginPath, const QStringList &enabledBundles) const;
+    QVariantMap analyzePlugin(const QString &resolvedPath, const QByteArray &packageJson,
+                              const QStringList &enabledBundles) const;
     QStringList readEnabledBundles() const;
     bool writeEnabledBundles(const QStringList &bundles);
     QString profileDir() const;
-    QString findDshExecutable() const;
-    bool runDsh(const QStringList &args, QString *output);
     void setLoading(bool loading);
     void setLastOutput(const QString &output);
 
-    QString m_dshHome;
-    QString m_dshExecutable;
+    std::unique_ptr<PluginBackend> m_backend;
     QString m_currentProfile;
     QVariantList m_plugins;
     QStringList m_profiles;

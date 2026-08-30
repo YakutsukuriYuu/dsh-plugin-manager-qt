@@ -111,6 +111,39 @@ Rectangle {
             }
         }
 
+        // 远程模式横幅（仅在管理远程服务器时显示）
+        Rectangle {
+            Layout.fillWidth: true
+            visible: pluginManager.remoteActive
+            implicitHeight: remoteBannerRow.implicitHeight + 20
+            radius: Theme.radiusLarge
+            color: Theme.primaryBg
+            border.color: "#3D5470FB"
+            border.width: 1
+
+            RowLayout {
+                id: remoteBannerRow
+                anchors.centerIn: parent
+                width: parent.width - 24
+                spacing: 10
+
+                AppIcon {
+                    width: 15
+                    height: 15
+                    name: "server"
+                    iconColor: Theme.primaryHover
+                }
+
+                Text {
+                    text: "正在管理远程: " + pluginManager.backendName
+                    color: Theme.text
+                    font.pixelSize: Theme.fontSmall
+                    Layout.fillWidth: true
+                    elide: Text.ElideMiddle
+                }
+            }
+        }
+
         // 分段筛选（macOS 胶囊容器风格）：全部 / 已启用
         Rectangle {
             Layout.preferredWidth: segRow.implicitWidth + 6
