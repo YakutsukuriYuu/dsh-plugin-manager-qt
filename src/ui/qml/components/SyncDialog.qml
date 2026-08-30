@@ -38,6 +38,22 @@ Dialog {
         open()
     }
 
+    // 是否显示子依赖（子依赖会随父插件自动同步，默认无需显示）
+    property bool showTransitive: false
+
+    // 清单 = 默认只显示直接安装的插件
+    readonly property var visiblePlan: {
+        if (showTransitive) return syncManager.plan
+        return syncManager.plan.filter(function (p) { return p.direct })
+    }
+
+    // 子依赖数量（提示用）
+    readonly property int transitiveCount: {
+        let n = 0
+        for (const p of syncManager.plan) if (!p.direct) ++n
+        return n
+    }
+
     // 选中数量
     readonly property int checkedCount: {
         let n = 0
@@ -49,12 +65,33 @@ Dialog {
         spacing: 12
 
         // 说明
-        Text {
-            text: "本地 → " + pluginManager.backendName + "（版本以本地为准）"
-            font.pixelSize: Theme.fontSmall
-            color: Theme.textSecondary
-            wrapMode: Text.WordWrap
+        RowLayout {
             Layout.fillWidth: true
+            spacing: 10
+
+            Text {
+                text: "本地 → " + pluginManager.backendName + "（版本以本地为准）"
+                font.pixelSize: Theme.fontSmall
+                color: Theme.textSecondary
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+            }
+
+            // 子依赖开关（仅当存在时显示）
+            CheckBox {
+                visible: root.transitiveCount > 0
+                text: "子依赖 (" + root.transitiveCount + ")"
+                checked: root.showTransitive
+                onToggled: root.showTransitive = checked
+
+                contentItem: Text {
+                    text: parent.text
+                    font.pixelSize: Theme.fontSmall
+                    color: Theme.textTertiary
+                    leftPadding: parent.indicator.width + 6
+                    verticalAlignment: Text.AlignVCenter
+                }
+            }
         }
 
         // 插件清单
@@ -69,7 +106,7 @@ Dialog {
             ListView {
                 anchors.fill: parent
                 anchors.margins: 6
-                model: syncManager.plan
+                model: root.visiblePlan
                 spacing: 2
                 clip: true
                 enabled: !syncManager.syncing
@@ -153,7 +190,7 @@ Dialog {
 
                 Text {
                     anchors.centerIn: parent
-                    visible: syncManager.plan.length === 0
+                    visible: root.visiblePlan.length === 0
                     text: "本地没有可同步的插件"
                     color: Theme.textSecondary
                     font.pixelSize: Theme.fontNormal
@@ -224,8 +261,8 @@ Dialog {
                 flat: true
                 enabled: !syncManager.syncing
                 onClicked: {
-                    const c = {}
-                    for (const item of syncManager.plan) c[item.name] = true
+                    const c = root.checked
+                    for (const item of root.visiblePlan) c[item.name] = true
                     root.checked = c
                     root.checkedChanged()
                 }
@@ -236,8 +273,8 @@ Dialog {
                 flat: true
                 enabled: !syncManager.syncing
                 onClicked: {
-                    const c = {}
-                    for (const item of syncManager.plan) c[item.name] = item.direct && item.action !== "same"
+                    const c = root.checked
+                    for (const item of root.visiblePlan) c[item.name] = item.action !== "same"
                     root.checked = c
                     root.checkedChanged()
                 }
