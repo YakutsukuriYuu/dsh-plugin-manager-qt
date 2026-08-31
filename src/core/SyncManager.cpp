@@ -2,6 +2,7 @@
 #include "PluginManager.h"
 #include "PluginBackend.h"
 #include "LocalBackend.h"
+#include "SshBackend.h"
 
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -138,7 +139,7 @@ QString SyncManager::buildPlan()
     return QString();
 }
 
-void SyncManager::startSync(const QStringList &pluginNames)
+void SyncManager::startSync(const QStringList &pluginNames, bool installDeps)
 {
     if (m_syncing || pluginNames.isEmpty())
         return;
@@ -256,6 +257,42 @@ void SyncManager::startSync(const QStringList &pluginNames)
             QMetaObject::invokeMethod(this, [this, total, &done]() {
                 setProgress(static_cast<int>((++done) * 100.0 / total));
             }, Qt::QueuedConnection);
+        }
+
+        // 4) （可选）同步完成后在远程 profile 内 npm install，补齐插件的运行依赖。
+        //    同步只传插件文件本身，插件依赖的 npm 包（如 schemastery、ssh2）
+        //    不会自动带过去；缺失时远程 dsh 重启即崩溃（实测踩坑）。
+        //    npm reify 会保留版本满足 depSpec 的已上传包，只补缺失项。
+        if (installDeps && succeeded > 0) {
+            auto *sshBackend = dynamic_cast<SshBackend *>(remote);
+            if (sshBackend) {
+                postLog(QStringLiteral("▶ 安装远程依赖（npm install）…"));
+                const QString npm = sshBackend->detectNpmPath();
+                if (npm.isEmpty()) {
+                    postLog(QStringLiteral("  ⚠ 远程未找到 npm，跳过依赖安装。"
+                                           "远程 dsh 重启后可能因缺依赖无法启动"));
+                } else {
+                    const QString profileDir = m_pluginManager->dshHome()
+                                               + "/profiles/" + profile;
+                    QString out;
+                    const bool ok = sshBackend->execRemote(
+                        QStringLiteral("cd '%1' && '%2' install --no-audit --no-fund 2>&1")
+                            .arg(profileDir, npm),
+                        &out, 600000);
+                    // 只摘关键行，避免刷屏
+                    for (const QString &line : out.split('\n', Qt::SkipEmptyParts)) {
+                        const QString t = line.trimmed();
+                        if (t.startsWith(QLatin1String("added"))
+                            || t.startsWith(QLatin1String("changed"))
+                            || t.startsWith(QLatin1String("removed"))
+                            || t.startsWith(QLatin1String("npm error"))
+                            || t.startsWith(QLatin1String("npm warn")))
+                            postLog(QStringLiteral("  ") + t);
+                    }
+                    postLog(ok ? QStringLiteral("  ✓ 依赖安装完成")
+                               : QStringLiteral("  ⚠ npm install 未完全成功，详见上方输出"));
+                }
+            }
         }
 
         QMetaObject::invokeMethod(this, [this, succeeded, failed]() {

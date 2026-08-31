@@ -228,6 +228,35 @@ public:
                    output, {}, timeoutMs);
     }
 
+    // 探测远程 npm 绝对路径：登录 shell → dsh 同目录 → 常见安装位置（nvm 等）。
+    // 找不到返回空串。
+    QString detectNpmPath()
+    {
+        QString out;
+        // 1. 登录 shell（PATH 完整时最直接）
+        if (execRemoteLoginShell(QStringLiteral("command -v npm"), &out, 15000)
+            && !out.trimmed().isEmpty())
+            return out.trimmed().split('\n').first();
+        // 2. 与 dsh 同目录（nvm 场景：bin/dsh 旁边就是 bin/npm）
+        if (!m_dshPath.isEmpty()) {
+            const QString cand = QFileInfo(m_dshPath).absolutePath() + "/npm";
+            if (execRemote(QStringLiteral("[ -x '%1' ] && echo OK").arg(cand), &out)
+                && out.trimmed() == QLatin1String("OK"))
+                return cand;
+        }
+        // 3. 常见安装位置（nvm 未写进 shell 配置时登录 shell 找不到 npm）
+        if (execRemote(QStringLiteral(
+                "shopt -s nullglob 2>/dev/null; setopt null_glob 2>/dev/null; "
+                "for c in \"$HOME\"/.nvm/versions/node/*/bin/npm "
+                "         /usr/local/bin/npm /opt/homebrew/bin/npm "
+                "         \"$HOME/.npm-global/bin/npm\" /usr/bin/npm; do "
+                "  [ -x \"$c\" ] && echo \"$c\" && break; "
+                "done"), &out, 15000)
+            && !out.trimmed().isEmpty())
+            return out.trimmed().split('\n').first();
+        return QString();
+    }
+
     void openDirectory(const QString &path) override
     {
         // 远程无法打开 Finder，复制路径到剪贴板

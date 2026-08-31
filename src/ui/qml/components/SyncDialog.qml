@@ -282,6 +282,24 @@ Dialog {
 
             Item { Layout.fillWidth: true }
 
+            CheckBox {
+                id: installDepsBox
+                checked: true
+                enabled: !syncManager.syncing
+
+                contentItem: Text {
+                    text: "同步后安装依赖"
+                    font.pixelSize: Theme.fontSmall
+                    color: Theme.textSecondary
+                    leftPadding: installDepsBox.indicator.width + 6
+                    verticalAlignment: Text.AlignVCenter
+                }
+
+                ToolTip.visible: hovered
+                ToolTip.text: "在远程执行 npm install，补齐插件的运行依赖（推荐）"
+                ToolTip.delay: 500
+            }
+
             Button {
                 text: "关闭"
                 enabled: !syncManager.syncing
@@ -295,7 +313,7 @@ Dialog {
                     const names = []
                     for (const k in root.checked)
                         if (root.checked[k]) names.push(k)
-                    syncManager.startSync(names)
+                    syncManager.startSync(names, installDepsBox.checked)
                 }
 
                 contentItem: RowLayout {

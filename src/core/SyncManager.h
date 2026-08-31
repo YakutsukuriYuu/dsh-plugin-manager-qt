@@ -21,6 +21,8 @@ class PluginBackend;
  *     - 更新远程 profile package.json：
  *       dependencies[name] = 本地版本（本地为主，远程更新也覆盖）
  *       bundles 与本地启用状态对齐
+ *     - （可选）npm install 补齐远程依赖——同步只传插件文件，
+ *       插件的运行依赖（如 schemastery）缺失会导致远程 dsh 重启后崩溃
  *  3. 完成后远程插件列表自动刷新
  *
  * 版本策略：本地为主（forceOverwrite），远程较新也会被本地覆盖。
@@ -44,8 +46,9 @@ public:
     // 构建同步计划（需远程已连接；本地扫描快，远程数据取当前列表）
     // 成功返回空字符串，失败返回错误信息
     Q_INVOKABLE QString buildPlan();
-    // 开始同步选中的插件
-    Q_INVOKABLE void startSync(const QStringList &pluginNames);
+    // 开始同步选中的插件。
+    // installDeps=true 时同步完成后在远程 profile 内执行 npm install 补齐依赖
+    Q_INVOKABLE void startSync(const QStringList &pluginNames, bool installDeps = true);
 
 signals:
     void syncingChanged();
