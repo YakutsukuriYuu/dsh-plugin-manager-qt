@@ -40,8 +40,18 @@ jobs:
           # 验证签名完整性（Sealed Resources 必须有文件数）
           codesign -dv --verbose=2 build/bin/dsh-plugin-manager.app 2>&1 | grep -E "Signature|Sealed"
 
-          macdeployqt build/bin/dsh-plugin-manager.app -dmg
-          mv build/bin/dsh-plugin-manager.dmg dsh-plugin-manager-macos-arm64.dmg
+          # 手动创建 DMG（macdeployqt -dmg 会拿构建路径当卷名，显示为
+          # "build:bin:dsh-plugin-manager"，很难看）。改用 hdiutil：
+          #   - 卷名 "DSH Plugin Manager"
+          #   - 内置 /Applications 快捷方式，用户拖拽即完成安装
+          mkdir -p dmg-staging
+          cp -R build/bin/dsh-plugin-manager.app dmg-staging/
+          ln -s /Applications dmg-staging/Applications
+          hdiutil create -volname "DSH Plugin Manager" \
+                         -srcfolder dmg-staging \
+                         -ov -format UDZO \
+                         dsh-plugin-manager-macos-arm64.dmg
+          rm -rf dmg-staging
           ls -lh dsh-plugin-manager-macos-arm64.dmg
 
       - name: 发布 Release
