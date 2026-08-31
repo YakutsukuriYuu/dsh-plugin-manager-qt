@@ -11,7 +11,7 @@
 > macOS 会报「已损坏，无法打开」——这是未签名应用的正常拦截，执行一条命令即可：
 >
 > ```bash
-> xattr -cr /Applications/dsh-plugin-manager.app
+> xattr -cr "/Applications/DSH Plugin Manager.app"
 > ```
 
 ## 功能

@@ -99,6 +99,7 @@ qt_add_resources(dsh-plugin-manager "icons"
 
 set_target_properties(dsh-plugin-manager PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+    OUTPUT_NAME "DSH Plugin Manager"
     MACOSX_BUNDLE TRUE
     MACOSX_BUNDLE_GUI_IDENTIFIER "com.dsh.plugin-manager"
     MACOSX_BUNDLE_BUNDLE_NAME "DSH Plugin Manager"
