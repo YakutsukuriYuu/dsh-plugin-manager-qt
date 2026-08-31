@@ -431,6 +431,153 @@ Rectangle {
             }
         }
 
+        // ===== DSH 服务管理卡片（连接远程后显示）=====
+        Rectangle {
+            visible: pluginManager.remoteActive
+            Layout.fillWidth: true
+            implicitHeight: dshCardCol.implicitHeight + 28
+            radius: Theme.radiusLarge
+            color: Theme.card
+            border.color: Theme.cardBorder
+            border.width: 1
+
+            ColumnLayout {
+                id: dshCardCol
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.margins: 14
+                spacing: 10
+
+                // 标题行：状态点 + 标题 + 操作按钮
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+
+                    Rectangle {
+                        width: 8
+                        height: 8
+                        radius: 4
+                        color: !remoteDshManager.dshInstalled ? Theme.textTertiary
+                               : remoteDshManager.running ? Theme.success : Theme.warning
+                    }
+
+                    Text {
+                        text: "DSH 服务"
+                        font.pixelSize: Theme.fontHeadline
+                        font.weight: Font.DemiBold
+                        color: Theme.text
+                    }
+
+                    Text {
+                        visible: remoteDshManager.busy
+                        text: "处理中…"
+                        font.pixelSize: Theme.fontSmall
+                        color: Theme.primaryHover
+                    }
+
+                    Item { Layout.fillWidth: true }
+
+                    Button {
+                        flat: true
+                        enabled: !remoteDshManager.busy
+                        onClicked: remoteDshManager.refresh()
+                        contentItem: RowLayout {
+                            spacing: 5
+                            AppIcon {
+                                name: "refresh"; width: 13; height: 13
+                                iconColor: Theme.textSecondary
+                            }
+                            Text {
+                                text: "刷新"; font.pixelSize: Theme.fontSmall
+                                color: Theme.textSecondary
+                            }
+                        }
+                    }
+
+                    Button {
+                        visible: remoteDshManager.dshInstalled
+                        enabled: !remoteDshManager.busy && remoteDshManager.upgradeAvailable
+                        highlighted: remoteDshManager.upgradeAvailable
+                        onClicked: remoteDshManager.upgrade()
+                        contentItem: RowLayout {
+                            spacing: 5
+                            AppIcon {
+                                name: "download"; width: 13; height: 13
+                                iconColor: remoteDshManager.upgradeAvailable ? "white" : Theme.textTertiary
+                            }
+                            Text {
+                                text: "升级"; font.pixelSize: Theme.fontSmall
+                                color: remoteDshManager.upgradeAvailable ? "white" : Theme.textTertiary
+                            }
+                        }
+                    }
+
+                    Button {
+                        visible: remoteDshManager.dshInstalled
+                        enabled: !remoteDshManager.busy && remoteDshManager.running
+                        flat: true
+                        onClicked: remoteDshManager.restart()
+                        contentItem: RowLayout {
+                            spacing: 5
+                            AppIcon {
+                                name: "restart"; width: 13; height: 13
+                                iconColor: remoteDshManager.running ? Theme.warning : Theme.textTertiary
+                            }
+                            Text {
+                                text: "重启"; font.pixelSize: Theme.fontSmall
+                                color: remoteDshManager.running ? Theme.warning : Theme.textTertiary
+                            }
+                        }
+                    }
+                }
+
+                // 状态信息行
+                Text {
+                    Layout.fillWidth: true
+                    font.pixelSize: Theme.fontNormal
+                    color: Theme.textSecondary
+                    text: !remoteDshManager.dshInstalled
+                          ? "未检测到 DSH（服务器上未找到 dsh 命令）"
+                          : ("已装 v" + remoteDshManager.dshVersion
+                             + (remoteDshManager.latestVersion.length > 0
+                                ? "  ·  最新 v" + remoteDshManager.latestVersion : "")
+                             + (remoteDshManager.upgradeAvailable ? "  ·  有新版本可升级" : "")
+                             + "  ·  " + remoteDshManager.runModeText)
+                }
+
+                // 操作日志（有内容时显示，最多 6 行高）
+                Rectangle {
+                    visible: remoteDshManager.log.length > 0
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: Math.min(logText.implicitHeight + 16, 120)
+                    radius: Theme.radiusSmall
+                    color: Theme.field
+                    clip: true
+
+                    Flickable {
+                        anchors.fill: parent
+                        anchors.margins: 8
+                        contentWidth: width
+                        contentHeight: logText.implicitHeight
+                        flickableDirection: Flickable.VerticalFlick
+                        // 始终停在最底部，看最新日志
+                        onContentHeightChanged: contentY = Math.max(0, contentHeight - height)
+
+                        Text {
+                            id: logText
+                            width: parent.width
+                            text: remoteDshManager.log
+                            font.pixelSize: Theme.fontSmall
+                            font.family: "Menlo"
+                            color: Theme.textSecondary
+                            wrapMode: Text.WrapAnywhere
+                        }
+                    }
+                }
+            }
+        }
+
         // 连接提示
         Text {
             Layout.fillWidth: true

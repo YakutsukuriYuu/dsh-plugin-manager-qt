@@ -31,6 +31,7 @@ set(SOURCES
     src/core/TmuxManager.cpp
     src/core/UpdateChecker.cpp
     src/core/RemoteManager.cpp
+    src/core/RemoteDshManager.cpp
     src/core/SyncManager.cpp
 )
 

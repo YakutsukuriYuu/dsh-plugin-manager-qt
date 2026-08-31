@@ -207,6 +207,27 @@ public:
                    output, {}, 180000);  // 安装可能较慢
     }
 
+    // 通用远程命令执行（供 RemoteDshManager 等上层模块使用）。
+    // 返回是否成功（退出码 0），输出（含失败时的 stderr）写入 output。
+    bool execRemote(const QString &remoteCommand, QString *output = nullptr,
+                    int timeoutMs = 30000)
+    {
+        return ssh(remoteCommand, output, {}, timeoutMs);
+    }
+
+    // 通过登录 shell 执行命令（可拿到 nvm 等完整的 PATH）。
+    // 依次尝试 zsh/bash 登录 shell。
+    bool execRemoteLoginShell(const QString &command, QString *output = nullptr,
+                              int timeoutMs = 30000)
+    {
+        // 单引号转义后嵌入 -lc '...'
+        QString escaped = command;
+        escaped.replace('\'', QStringLiteral("'\\''"));
+        return ssh(QStringLiteral(
+                       "zsh -lc '%1' 2>/dev/null || bash -lc '%1'").arg(escaped),
+                   output, {}, timeoutMs);
+    }
+
     void openDirectory(const QString &path) override
     {
         // 远程无法打开 Finder，复制路径到剪贴板
