@@ -90,7 +90,6 @@ Rectangle {
         property color iconColor: Theme.textSecondary
         property color hoverColor: "#14FFFFFF"
         property color hoverIconColor: Theme.text
-        property bool enabled: true
         signal clicked()
 
         implicitWidth: 30

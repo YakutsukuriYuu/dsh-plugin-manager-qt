@@ -329,10 +329,13 @@ Rectangle {
 
                 Button {
                     flat: true
-                    text: "取消选择"
-                    font.pixelSize: Theme.fontSmall
-                    color: Theme.textSecondary
                     onClicked: root.clearSelection()
+
+                    contentItem: Text {
+                        text: "取消选择"
+                        font.pixelSize: Theme.fontSmall
+                        color: Theme.textSecondary
+                    }
                 }
 
                 Button {
