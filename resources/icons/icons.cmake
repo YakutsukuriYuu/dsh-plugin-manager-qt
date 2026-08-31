@@ -18,6 +18,12 @@ set(ICON_FILES
     resources/icons/doc_white.svg
     resources/icons/doc_danger.svg
     resources/icons/doc_blue.svg
+    resources/icons/download_secondary.svg
+    resources/icons/download_primary.svg
+    resources/icons/download_tertiary.svg
+    resources/icons/download_white.svg
+    resources/icons/download_danger.svg
+    resources/icons/download_blue.svg
     resources/icons/folder_secondary.svg
     resources/icons/folder_primary.svg
     resources/icons/folder_tertiary.svg

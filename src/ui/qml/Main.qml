@@ -415,20 +415,58 @@ ApplicationWindow {
                                 Button {
                                     visible: updateChecker.updateAvailable
                                     highlighted: true
+                                    enabled: !updateChecker.downloading && !updateChecker.installing
+                                    onClicked: updateChecker.downloadAndInstall()
+
+                                    contentItem: RowLayout {
+                                        spacing: 6
+                                        AppIcon {
+                                            name: "download"; width: 14; height: 14
+                                            iconColor: "white"
+                                        }
+                                        Text {
+                                            text: updateChecker.installing ? "安装中…" : "下载并安装"
+                                            font.pixelSize: Theme.fontNormal
+                                            color: "white"
+                                        }
+                                    }
+                                }
+
+                                Button {
+                                    visible: updateChecker.updateAvailable
+                                    flat: true
                                     onClicked: updateChecker.openReleasePage()
 
                                     contentItem: RowLayout {
                                         spacing: 6
                                         AppIcon {
                                             name: "doc"; width: 14; height: 14
-                                            iconColor: "white"
+                                            iconColor: Theme.textSecondary
                                         }
                                         Text {
-                                            text: "前往下载"
+                                            text: "Release 页"
                                             font.pixelSize: Theme.fontNormal
-                                            color: "white"
+                                            color: Theme.textSecondary
                                         }
                                     }
+                                }
+                            }
+
+                            // 下载进度条
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 4
+                                visible: updateChecker.downloading
+
+                                ProgressBar {
+                                    Layout.fillWidth: true
+                                    value: updateChecker.downloadProgress / 100
+                                }
+
+                                Text {
+                                    text: "下载中 " + updateChecker.downloadProgress + "%"
+                                    font.pixelSize: Theme.fontSmall
+                                    color: Theme.textTertiary
                                 }
                             }
 
@@ -459,6 +497,31 @@ ApplicationWindow {
                                         color: Theme.textSecondary
                                         font.pixelSize: Theme.fontSmall
                                         wrapMode: Text.WordWrap
+                                    }
+                                }
+                            }
+
+                            // 安装过程日志（下载/安装时显示）
+                            Rectangle {
+                                Layout.fillWidth: true
+                                visible: updateChecker.installLog.length > 0
+                                implicitHeight: Math.min(installLogText.implicitHeight + 20, 140)
+                                radius: Theme.radius
+                                color: Theme.field
+
+                                ScrollView {
+                                    anchors.fill: parent
+                                    anchors.margins: 10
+                                    clip: true
+
+                                    Text {
+                                        id: installLogText
+                                        width: parent.width
+                                        text: updateChecker.installLog
+                                        color: Theme.textSecondary
+                                        font.pixelSize: Theme.fontSmall
+                                        font.family: "Menlo"
+                                        wrapMode: Text.WrapAnywhere
                                     }
                                 }
                             }
