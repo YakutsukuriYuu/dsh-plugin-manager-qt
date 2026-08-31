@@ -9,7 +9,6 @@
 #include "core/UpdateChecker.h"
 #include "core/RemoteManager.h"
 #include "core/RemoteDshManager.h"
-#include "core/SyncManager.h"
 
 int main(int argc, char *argv[])
 {
@@ -24,7 +23,6 @@ int main(int argc, char *argv[])
     TmuxManager tmuxManager;
     UpdateChecker updateChecker;
     RemoteManager remoteManager(&pluginManager);
-    SyncManager syncManager(&pluginManager);
     RemoteDshManager remoteDshManager(&pluginManager);
 
     // 远程连接成功后自动探测服务器 DSH 状态；切回本机时清空
@@ -45,7 +43,6 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty("tmuxManager", &tmuxManager);
     engine.rootContext()->setContextProperty("updateChecker", &updateChecker);
     engine.rootContext()->setContextProperty("remoteManager", &remoteManager);
-    engine.rootContext()->setContextProperty("syncManager", &syncManager);
     engine.rootContext()->setContextProperty("remoteDshManager", &remoteDshManager);
 
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreated,

@@ -81,21 +81,6 @@ Rectangle {
 
             Item { Layout.fillWidth: true }
 
-            // 同步按钮（仅远程模式显示）
-            Button {
-                visible: pluginManager.remoteActive
-                onClicked: syncDialog.openSync()
-
-                contentItem: RowLayout {
-                    spacing: 6
-                    AppIcon {
-                        name: "upload"; width: 14; height: 14
-                        iconColor: Theme.text
-                    }
-                    Text { text: "同步到服务器"; font.pixelSize: Theme.fontNormal; color: Theme.text }
-                }
-            }
-
             // 带图标的按钮
             Button {
                 flat: true
@@ -290,10 +275,5 @@ Rectangle {
                 }
             }
         }
-    }
-
-    // 同步到服务器对话框（仅远程模式可用）
-    SyncDialog {
-        id: syncDialog
     }
 }
