@@ -294,6 +294,9 @@ void UpdateChecker::downloadAndInstall()
                 // 备份旧版
                 post("• 备份当前版本…");
                 {
+                    // 先清理同名残留：若上次遗留的是「文件」而非目录，
+                    // cp -R 会因类型冲突直接失败（实测踩坑）
+                    QProcess::execute("rm", {"-rf", backupPath});
                     QProcess p;
                     p.start("cp", {"-R", appPath, backupPath});
                     if (!p.waitForFinished(120000) || p.exitCode() != 0) {
