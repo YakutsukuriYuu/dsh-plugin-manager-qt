@@ -288,7 +288,6 @@ void UpdateChecker::downloadAndInstall()
                                               Qt::QueuedConnection);
                 };
 
-                const QString mountPoint = QStringLiteral("/Volumes/DSH Plugin Manager");
                 const QString backupPath = QDir::temp().absoluteFilePath(
                     QStringLiteral("DSH-Plugin-Manager-backup.app"));
 
@@ -303,15 +302,36 @@ void UpdateChecker::downloadAndInstall()
                     }
                 }
 
-                // 挂载 DMG
+                // 挂载 DMG（不用 -quiet，从输出解析真实挂载点——
+                // 重名卷会被挂到 "DSH Plugin Manager 1"，不能硬编码）
                 post("• 挂载 DMG…");
+                QString mountPoint;
                 {
-                    auto [ok, out] = run("hdiutil", {"attach", dmgPath, "-nobrowse", "-quiet"});
-                    if (!ok) {
-                        post("  ✗ 挂载失败: " + out);
+                    QProcess p;
+                    p.start("hdiutil", {"attach", dmgPath, "-nobrowse"});
+                    if (!p.waitForFinished(60000) || p.exitCode() != 0) {
+                        post("  ✗ 挂载失败: " +
+                             QString::fromUtf8(p.readAllStandardError()).trimmed());
+                        return false;
+                    }
+                    // 输出末尾的设备表形如（可能多行，取最后一行含 /Volumes/ 的）：
+                    // /dev/diskXs1  Apple_HFS  /Volumes/DSH Plugin Manager
+                    const QString out = QString::fromUtf8(p.readAllStandardOutput());
+                    const QStringList lines = out.split(QLatin1Char('\n'));
+                    for (int i = lines.size() - 1; i >= 0; --i) {
+                        const int vi = lines[i].indexOf(QStringLiteral("/Volumes/"));
+                        if (vi >= 0) {
+                            mountPoint = lines[i].mid(vi).trimmed();
+                            break;
+                        }
+                    }
+                    if (mountPoint.isEmpty()) {
+                        post("  ✗ 未能确定挂载点，原始输出:");
+                        post(out.trimmed());
                         return false;
                     }
                 }
+                post("• 挂载点: " + mountPoint);
 
                 // 原地替换
                 post("• 替换应用…");
