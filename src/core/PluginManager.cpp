@@ -395,45 +395,79 @@ void PluginManager::uninstallPlugin(const QString &pluginId)
     }
 
     const bool inProfileDeps = target.value("inProfileDeps").toBool();
+    const bool direct = target.value("direct").toBool();
     const QString entryPath = target.value("entryPath").toString();
+    const QString profile = m_currentProfile;
 
-    // ===== 情况 1：包管理器管理的包 → dsh plugin remove =====
-    if (inProfileDeps) {
-        setLoading(true);
-        QString output;
-        const bool ok = m_backend->runDsh({"plugin", "--profile", m_currentProfile, "remove", pluginId}, &output);
-        setLoading(false);
-        setLastOutput(output);
-
-        if (ok) {
-            emit operationSucceeded("卸载成功: " + pluginId);
-            scanPlugins();
-        } else {
-            emit errorOccurred("卸载失败: " + pluginId + "\n" + output);
-        }
+    // 子依赖不允许单独卸载（纯本地判断，直接提示）
+    if (!inProfileDeps && !direct) {
+        emit errorOccurred(pluginId + " 是其他插件的子依赖，不能单独卸载。\n"
+                           "如需移除，请卸载依赖它的插件（如 @linxin666/dsh-web-all）。");
         return;
     }
 
-    // ===== 情况 2/4：符号链接或孤儿目录 → 直接删除入口 =====
-    if (target.value("direct").toBool()) {
+    // ===== 异步卸载：后端操作（本地文件 / 远程 SSH）在工作线程执行，
+    // 主线程不被阻塞（BusyIndicator 正常转，远程慢操作也不卡 UI）=====
+    setLoading(true);
+    PluginBackend *backend = m_backend.get();
+
+    QFuture<QVariantMap> future = QtConcurrent::run([=]() -> QVariantMap {
+        QVariantMap result;
+        result["ok"] = false;
+        result["error"] = QString();
+
+        if (inProfileDeps) {
+            // 情况 1：包管理器管理的包 → dsh plugin remove
+            QString output;
+            const bool ok = backend->runDsh(
+                {"plugin", "--profile", profile, "remove", pluginId}, &output);
+            result["ok"] = ok;
+            result["output"] = output;
+            return result;
+        }
+
+        // 情况 2/4：符号链接或孤儿目录 → 直接删除入口 + 清理 bundles
         QString error;
-        if (!m_backend->removeEntry(entryPath, &error)) {
-            emit errorOccurred(error);
+        if (!backend->removeEntry(entryPath, &error)) {
+            result["error"] = error;
+            return result;
+        }
+        result["ok"] = true;
+        result["removed"] = true;
+        return result;
+    });
+
+    auto *watcher = new QFutureWatcher<QVariantMap>(this);
+    connect(watcher, &QFutureWatcher<QVariantMap>::finished, this,
+            [this, watcher, pluginId, direct]() {
+        watcher->deleteLater();
+        setLoading(false);
+
+        const QVariantMap result = watcher->result();
+        if (!result.value("ok").toBool()) {
+            const QString output = result.value("output").toString();
+            const QString error = result.value("error").toString();
+            setLastOutput(output);
+            emit errorOccurred("卸载失败: " + pluginId + "\n"
+                               + (error.isEmpty() ? output : error));
             return;
         }
-        QStringList bundles = readEnabledBundles();
-        if (bundles.removeAll(pluginId) > 0)
-            writeEnabledBundles(bundles);
-        emit operationSucceeded(remoteActive()
-                                ? "已删除远程插件入口: " + pluginId
-                                : "已移除插件: " + pluginId);
-        scanPlugins();
-        return;
-    }
 
-    // ===== 情况 3：其他插件的子依赖 → 不允许单独卸载 =====
-    emit errorOccurred(pluginId + " 是其他插件的子依赖，不能单独卸载。\n"
-                       "如需移除，请卸载依赖它的插件（如 @linxin666/dsh-web-all）。");
+        if (result.value("removed").toBool()) {
+            // 情况 2：删除入口后同步清理 profile bundles
+            QStringList bundles = readEnabledBundles();
+            if (bundles.removeAll(pluginId) > 0)
+                writeEnabledBundles(bundles);
+            emit operationSucceeded(remoteActive()
+                                    ? "已删除远程插件入口: " + pluginId
+                                    : "已移除插件: " + pluginId);
+        } else {
+            setLastOutput(result.value("output").toString());
+            emit operationSucceeded("卸载成功: " + pluginId);
+        }
+        scanPlugins();
+    });
+    watcher->setFuture(future);
 }
 
 void PluginManager::togglePlugin(const QString &pluginId, bool enabled)

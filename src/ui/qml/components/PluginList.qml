@@ -235,6 +235,7 @@ Rectangle {
             delegate: PluginCard {
                 width: ListView.view.width
                 plugin: modelData
+                busy: root.loading
 
                 onUninstallRequested: root.uninstallRequested(modelData.id)
                 onToggleRequested: function (enabled) {

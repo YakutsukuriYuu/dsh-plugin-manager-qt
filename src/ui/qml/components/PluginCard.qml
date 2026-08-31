@@ -28,6 +28,9 @@ Rectangle {
 
     property var plugin: null
 
+    // 卸载/操作期间禁用交互（loading 时防重复点击）
+    property bool busy: false
+
     // 子依赖插件弱化
     opacity: root.plugin && root.plugin.direct === false ? 0.6 : 1.0
 
@@ -82,10 +85,12 @@ Rectangle {
         property color iconColor: Theme.textSecondary
         property color hoverColor: "#14FFFFFF"
         property color hoverIconColor: Theme.text
+        property bool enabled: true
         signal clicked()
 
         implicitWidth: 30
         implicitHeight: 30
+        opacity: iconRoot.enabled ? 1.0 : 0.4
 
         Rectangle {
             anchors.fill: parent
@@ -105,12 +110,13 @@ Rectangle {
         MouseArea {
             id: iconMa
             anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
+            enabled: iconRoot.enabled
+            hoverEnabled: iconRoot.enabled
+            cursorShape: iconRoot.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
             onClicked: iconRoot.clicked()
         }
 
-        ToolTip.visible: iconMa.containsMouse && iconRoot.tip.length > 0
+        ToolTip.visible: iconMa.containsMouse && iconRoot.tip.length > 0 && iconRoot.enabled
         ToolTip.text: iconRoot.tip
         ToolTip.delay: 600
     }
@@ -259,6 +265,8 @@ Rectangle {
                     tip: "卸载插件"
                     hoverColor: "#26FF453A"
                     hoverIconColor: Theme.danger
+                    enabled: !root.busy
+                    opacity: root.busy ? 0.4 : 1.0
                     onClicked: root.uninstallRequested()
                 }
             }
