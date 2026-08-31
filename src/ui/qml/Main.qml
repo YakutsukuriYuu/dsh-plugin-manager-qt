@@ -207,6 +207,7 @@ ApplicationWindow {
                 onRefresh: pluginManager.refresh()
                 onInstallRequested: installDialog.open()
                 onUninstallRequested: function (id) { confirmDialog.askUninstall(id) }
+                onUninstallSelectedRequested: function (ids) { batchConfirmDialog.askUninstall(ids) }
                 onToggleRequested: function (id, enabled) { pluginManager.togglePlugin(id, enabled) }
                 onOpenDirectory: function (id) { pluginManager.openPluginDirectory(id) }
             }
@@ -636,6 +637,37 @@ ApplicationWindow {
         }
 
         onAccepted: pluginManager.uninstallPlugin(pluginId)
+    }
+
+    // ===== 批量卸载确认对话框 =====
+    Dialog {
+        id: batchConfirmDialog
+        title: "确认批量卸载"
+        modal: true
+        anchors.centerIn: parent
+        standardButtons: Dialog.Yes | Dialog.No
+
+        property var ids: []
+
+        function askUninstall(ids) {
+            this.ids = ids
+            open()
+        }
+
+        contentItem: Item {
+            implicitWidth: batchText.implicitWidth
+            implicitHeight: batchText.implicitHeight
+
+            Text {
+                id: batchText
+                text: "确定要卸载选中的 " + batchConfirmDialog.ids.length + " 个插件吗？\n"
+                      + "（子依赖插件会自动跳过，不会误删）"
+                color: Theme.text
+                font.pixelSize: Theme.fontNormal
+            }
+        }
+
+        onAccepted: pluginManager.uninstallPlugins(batchConfirmDialog.ids)
     }
 
     // ===== 消息提示对话框 =====

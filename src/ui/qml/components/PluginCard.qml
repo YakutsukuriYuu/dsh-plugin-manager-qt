@@ -31,6 +31,11 @@ Rectangle {
     // 卸载/操作期间禁用交互（loading 时防重复点击）
     property bool busy: false
 
+    // 多选模式：显示勾选框、点击卡片切换选中
+    property bool selectable: false
+    property bool selected: false
+    signal toggleSelect()
+
     // 子依赖插件弱化
     opacity: root.plugin && root.plugin.direct === false ? 0.6 : 1.0
 
@@ -125,7 +130,9 @@ Rectangle {
         id: mouseArea
         anchors.fill: parent
         hoverEnabled: true
-        acceptedButtons: Qt.NoButton
+        acceptedButtons: root.selectable ? Qt.LeftButton : Qt.NoButton
+        cursorShape: root.selectable ? Qt.PointingHandCursor : Qt.ArrowCursor
+        onClicked: root.toggleSelect()
     }
 
     RowLayout {
@@ -135,6 +142,32 @@ Rectangle {
         anchors.topMargin: 12
         anchors.bottomMargin: 12
         spacing: 14
+
+        // 多选勾选框（仅多选模式显示）
+        Rectangle {
+            visible: root.selectable
+            Layout.preferredWidth: 22
+            Layout.preferredHeight: 22
+            Layout.alignment: Qt.AlignVCenter
+            radius: 6
+            color: root.selected ? Theme.primary : "transparent"
+            border.color: root.selected ? Theme.primary : Theme.textTertiary
+            border.width: 1.5
+
+            Text {
+                visible: root.selected
+                anchors.centerIn: parent
+                text: "✓"
+                font.pixelSize: 13
+                font.weight: Font.DemiBold
+                color: "white"
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                onClicked: root.toggleSelect()
+            }
+        }
 
         // 插件首字母图标
         Rectangle {
@@ -229,8 +262,9 @@ Rectangle {
             }
         }
 
-        // ===== 操作区 =====
+        // ===== 操作区（多选模式下隐藏，避免误触）=====
         ColumnLayout {
+            visible: !root.selectable
             spacing: 4
             Layout.alignment: Qt.AlignVCenter
 

@@ -14,11 +14,65 @@ Rectangle {
     // 筛选模式: "all" | "enabled"
     property string filterMode: "all"
 
+    // ===== 多选模式 =====
+    property bool selectionMode: false
+    property var selectedIds: ({})   // id → true
+
     signal refresh()
     signal installRequested()
     signal uninstallRequested(string pluginId)
+    signal uninstallSelectedRequested(var ids)
     signal toggleRequested(string pluginId, bool enabled)
     signal openDirectory(string pluginId)
+
+    // 已选中数量
+    readonly property int selectedCount: {
+        let n = 0
+        for (const k in root.selectedIds) if (root.selectedIds[k]) ++n
+        return n
+    }
+
+    // 当前可见列表中是否全部选中
+    readonly property bool allVisibleSelected: {
+        const visible = root.filteredPlugins
+        for (const p of visible) if (!root.selectedIds[p.id]) return false
+        return visible.length > 0
+    }
+
+    function toggleSelection(id) {
+        const c = root.selectedIds
+        c[id] = !c[id]
+        root.selectedIds = c
+        root.selectedIdsChanged()
+    }
+
+    function selectAllVisible() {
+        const c = root.selectedIds
+        const visible = root.filteredPlugins
+        const selectAll = !root.allVisibleSelected
+        for (const p of visible) c[p.id] = selectAll
+        root.selectedIds = c
+        root.selectedIdsChanged()
+    }
+
+    function clearSelection() {
+        root.selectedIds = ({})
+        root.selectedIdsChanged()
+    }
+
+    // 进入/退出多选
+    function setSelectionMode(on) {
+        root.selectionMode = on
+        if (!on) root.clearSelection()
+    }
+
+    // 删除所选
+    function deleteSelected() {
+        const ids = []
+        for (const k in root.selectedIds) if (root.selectedIds[k]) ids.push(k)
+        if (ids.length === 0) return
+        root.uninstallSelectedRequested(ids)
+    }
 
     // 子依赖数量（基于直接/间接标记，不含筛选模式影响）
     readonly property int transitiveCount: {
@@ -80,6 +134,28 @@ Rectangle {
             }
 
             Item { Layout.fillWidth: true }
+
+            // 多选 / 取消
+            Button {
+                flat: true
+                highlighted: root.selectionMode
+                enabled: !root.loading && root.plugins.length > 0
+                onClicked: root.setSelectionMode(!root.selectionMode)
+
+                contentItem: RowLayout {
+                    spacing: 6
+                    AppIcon {
+                        name: root.selectionMode ? "close" : "grid"
+                        width: 14; height: 14
+                        iconColor: root.selectionMode ? "white" : Theme.textSecondary
+                    }
+                    Text {
+                        text: root.selectionMode ? "取消" : "选择"
+                        font.pixelSize: Theme.fontNormal
+                        color: root.selectionMode ? "white" : Theme.textSecondary
+                    }
+                }
+            }
 
             // 带图标的按钮
             Button {
@@ -217,6 +293,69 @@ Rectangle {
             }
         }
 
+        // 多选工具条
+        Rectangle {
+            visible: root.selectionMode
+            Layout.fillWidth: true
+            implicitHeight: selBarRow.implicitHeight + 14
+            radius: Theme.radius
+            color: Theme.primaryBg
+            border.color: "#3D5470FB"
+            border.width: 1
+
+            RowLayout {
+                id: selBarRow
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.leftMargin: 12
+                anchors.rightMargin: 12
+                spacing: 10
+
+                Button {
+                    flat: true
+                    text: root.allVisibleSelected ? "取消全选" : "全选可见"
+                    font.pixelSize: Theme.fontSmall
+                    onClicked: root.selectAllVisible()
+                }
+
+                Text {
+                    text: "已选 " + root.selectedCount + " 个"
+                    font.pixelSize: Theme.fontSmall
+                    color: root.selectedCount > 0 ? Theme.text : Theme.textTertiary
+                }
+
+                Item { Layout.fillWidth: true }
+
+                Button {
+                    flat: true
+                    text: "取消选择"
+                    font.pixelSize: Theme.fontSmall
+                    color: Theme.textSecondary
+                    onClicked: root.clearSelection()
+                }
+
+                Button {
+                    highlighted: true
+                    enabled: root.selectedCount > 0
+                    onClicked: root.deleteSelected()
+
+                    contentItem: RowLayout {
+                        spacing: 5
+                        AppIcon {
+                            name: "trash"; width: 13; height: 13
+                            iconColor: "white"
+                        }
+                        Text {
+                            text: "删除所选 (" + root.selectedCount + ")"
+                            font.pixelSize: Theme.fontSmall
+                            color: "white"
+                        }
+                    }
+                }
+            }
+        }
+
         // 加载指示器
         BusyIndicator {
             Layout.alignment: Qt.AlignHCenter
@@ -236,6 +375,9 @@ Rectangle {
                 width: ListView.view.width
                 plugin: modelData
                 busy: root.loading
+                selectable: root.selectionMode
+                selected: root.selectedIds[modelData.id] === true
+                onToggleSelect: root.toggleSelection(modelData.id)
 
                 onUninstallRequested: root.uninstallRequested(modelData.id)
                 onToggleRequested: function (enabled) {

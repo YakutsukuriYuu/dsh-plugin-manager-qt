@@ -56,6 +56,9 @@ public:
     Q_INVOKABLE void refresh();
     Q_INVOKABLE void installPlugin(const QString &packageName);
     Q_INVOKABLE void uninstallPlugin(const QString &pluginId);
+    // 批量卸载（多选/全选删除），异步执行；跳过子依赖包。
+    // 完成后发 operationSucceeded(汇总) / errorOccurred(失败明细)
+    Q_INVOKABLE void uninstallPlugins(const QStringList &pluginIds);
     Q_INVOKABLE void togglePlugin(const QString &pluginId, bool enabled);
     Q_INVOKABLE void openPluginDirectory(const QString &pluginId);
     Q_INVOKABLE void openProfileDirectory();

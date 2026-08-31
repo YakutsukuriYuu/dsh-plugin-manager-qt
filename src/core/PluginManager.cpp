@@ -6,6 +6,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QSettings>
+#include <QSet>
 #include <QFutureWatcher>
 #include <QtConcurrent>
 #include <algorithm>
@@ -465,6 +466,121 @@ void PluginManager::uninstallPlugin(const QString &pluginId)
             setLastOutput(result.value("output").toString());
             emit operationSucceeded("卸载成功: " + pluginId);
         }
+        scanPlugins();
+    });
+    watcher->setFuture(future);
+}
+
+void PluginManager::uninstallPlugins(const QStringList &pluginIds)
+{
+    if (m_currentProfile.isEmpty()) {
+        emit errorOccurred("请先选择 Profile");
+        return;
+    }
+    if (pluginIds.isEmpty()) {
+        emit errorOccurred("没有选择要卸载的插件");
+        return;
+    }
+
+    // 收集目标插件信息（主线程读取 m_plugins 快照，工作线程只读）
+    struct Item { QString id; bool inProfileDeps; bool direct; QString entryPath; };
+    QVector<Item> items;
+    for (const QString &pid : pluginIds) {
+        for (const QVariant &v : m_plugins) {
+            const QVariantMap p = v.toMap();
+            if (p.value("id").toString() == pid) {
+                Item it;
+                it.id = pid;
+                it.inProfileDeps = p.value("inProfileDeps").toBool();
+                it.direct = p.value("direct").toBool();
+                it.entryPath = p.value("entryPath").toString();
+                items.append(it);
+                break;
+            }
+        }
+    }
+
+    setLoading(true);
+    PluginBackend *backend = m_backend.get();
+    const QString profile = m_currentProfile;
+
+    // ===== 批量异步卸载：全部在工作线程循环执行，主线程不卡 =====
+    QFuture<QVariantMap> future = QtConcurrent::run([=]() -> QVariantMap {
+        int removed = 0, skipped = 0, failed = 0;
+        QStringList failedList, skippedList;
+
+        for (const Item &it : items) {
+            if (!it.inProfileDeps && !it.direct) {
+                ++skipped;
+                skippedList << it.id;   // 子依赖：不允许单独卸载
+                continue;
+            }
+            if (it.inProfileDeps) {
+                QString output;
+                const bool ok = backend->runDsh(
+                    {"plugin", "--profile", profile, "remove", it.id}, &output);
+                if (ok) { ++removed; }
+                else { ++failed; failedList << (it.id + " (" + output.trimmed() + ")"); }
+            } else {
+                QString error;
+                if (backend->removeEntry(it.entryPath, &error)) { ++removed; }
+                else { ++failed; failedList << (it.id + " (" + error + ")"); }
+            }
+        }
+
+        QVariantMap result;
+        result["removed"] = removed;
+        result["skipped"] = skipped;
+        result["failed"] = failed;
+        result["failedList"] = failedList.join("\n");
+        result["skippedList"] = skippedList.join("\n");
+        return result;
+    });
+
+    auto *watcher = new QFutureWatcher<QVariantMap>(this);
+    connect(watcher, &QFutureWatcher<QVariantMap>::finished, this,
+            [this, watcher, items]() {
+        watcher->deleteLater();
+        setLoading(false);
+
+        const QVariantMap result = watcher->result();
+        const int removed = result.value("removed").toInt();
+        const int skipped = result.value("skipped").toInt();
+        const int failed = result.value("failed").toInt();
+
+        // 删除入口成功后，把已卸载的包从 bundles 清理掉
+        QSet<QString> failedSet;
+        for (const QString &f : result.value("failedList").toString()
+                                    .split('\n', Qt::SkipEmptyParts))
+            failedSet.insert(f.left(f.indexOf(' ')));   // 失败项格式 "id (错误)"
+        QStringList removedIds;
+        for (const Item &it : items)
+            if (!failedSet.contains(it.id) && (it.inProfileDeps || it.direct))
+                removedIds << it.id;
+        if (!removedIds.isEmpty()) {
+            QStringList bundles = readEnabledBundles();
+            bool changed = false;
+            for (const QString &id : removedIds)
+                changed = bundles.removeAll(id) > 0 || changed;
+            if (changed)
+                writeEnabledBundles(bundles);
+        }
+
+        QString summary = QString("已卸载 %1 个插件").arg(removed);
+        if (skipped > 0)
+            summary += QString("，跳过子依赖 %1 个").arg(skipped);
+        if (failed > 0)
+            summary += QString("，失败 %1 个").arg(failed);
+        if (!result.value("failedList").toString().isEmpty())
+            summary += "\n失败明细:\n" + result.value("failedList").toString();
+        if (!result.value("skippedList").toString().isEmpty())
+            summary += "\n跳过的子依赖:\n" + result.value("skippedList").toString();
+
+        if (failed > 0)
+            emit errorOccurred(summary);
+        else
+            emit operationSucceeded(summary);
+
         scanPlugins();
     });
     watcher->setFuture(future);
