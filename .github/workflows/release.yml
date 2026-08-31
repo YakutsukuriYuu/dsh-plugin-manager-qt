@@ -29,8 +29,23 @@ jobs:
           cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$Qt6_DIR"
           cmake --build build -j$(sysctl -n hw.ncpu)
 
-      - name: 打包 DMG
+      - name: 确定版本号
+        id: ver
         run: |
+          # tag 触发时从 tag 取版本号（v0.1.3 → 0.1.3）；
+          # 手动触发时从 CMakeLists.txt 的 project(VERSION) 取
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            V="${GITHUB_REF_NAME#v}"
+          else
+            V=$(sed -n 's/^project(.*VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt | head -1)
+          fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+
+      - name: 打包 DMG
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          DMG="dsh-plugin-manager-macos-arm64-${VERSION}.dmg"
           # macdeployqt 会把依赖的 Qt 框架拷进 .app，使其可在无 Qt 的机器上运行
           macdeployqt "build/bin/DSH Plugin Manager.app" -qmldir=src/ui/qml
 
@@ -50,12 +65,12 @@ jobs:
           hdiutil create -volname "DSH Plugin Manager" \
                          -srcfolder dmg-staging \
                          -ov -format UDZO \
-                         dsh-plugin-manager-macos-arm64.dmg
+                         "$DMG"
           rm -rf dmg-staging
-          ls -lh dsh-plugin-manager-macos-arm64.dmg
+          ls -lh "$DMG"
 
       - name: 发布 Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dsh-plugin-manager-macos-arm64.dmg
+          files: dsh-plugin-manager-macos-arm64-${{ steps.ver.outputs.version }}.dmg
           generate_release_notes: true

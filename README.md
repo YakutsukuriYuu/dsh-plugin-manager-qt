@@ -6,7 +6,7 @@
 
 ## 下载安装
 
-在 [Releases](https://github.com/YakutsukuriYuu/dsh-plugin-manager-qt/releases/latest) 下载 `dsh-plugin-manager-macos-arm64.dmg`（macOS Apple Silicon）。
+在 [Releases](https://github.com/YakutsukuriYuu/dsh-plugin-manager-qt/releases/latest) 下载 `dsh-plugin-manager-macos-arm64-<版本号>.dmg`（macOS Apple Silicon）。
 
 > macOS 会报「已损坏，无法打开」——这是未签名应用的正常拦截，执行一条命令即可：
 >
